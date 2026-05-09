@@ -107,31 +107,7 @@ Gemma 4 creates an optimized stargazing plan:
 
 ## Architecture
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│                       Gradio UI                              │
-│  Tonight's Sky│Chat│Tour│Compare│Identify│Deep Dive│Planner  │
-├──────────────────────────────────────────────────────────────┤
-│                     StarLens Engine                          │
-│   orchestration • validation • context building • routing    │
-├────────────────────┬─────────────────────────────────────────┤
-│  Gemma 4 Client    │           Sky Catalog                   │
-│  ┌──────────────┐  │  ┌───────────────────────────────────┐  │
-│  │ chat()       │  │  │ Skyfield ephemeris (Sun/Moon/🪐)  │  │
-│  │ guided_tour()│  │  │ Hipparcos 118K stars              │  │
-│  │ identify_sky │  │  │ JPL DE421 planets                 │  │
-│  │ explain_obj  │  │  │ Stellarium 88 constellations      │  │
-│  │ analyze_chart│  │  │ Chart renderer (matplotlib)       │  │
-│  │ explain_why  │  │  └───────────────────────────────────┘  │
-│  │ compare_skies│  │                                         │
-│  │ narrate_sky  │  │                                         │
-│  │ plan_session │  │                                         │
-│  └──────────────┘  │                                         │
-├────────────────────┴─────────────────────────────────────────┤
-│                   Ollama (local inference)                   │
-│        gemma4:e4b (vision) / gemma4:31b-cloud (reasoning)   │
-└──────────────────────────────────────────────────────────────┘
-```
+![StarLens Architecture](docs/architecture.png)
 
 **Key design decisions:**
 
@@ -167,7 +143,7 @@ pip install -e .
 
 ### Data Files
 
-StarLens needs three astronomy data files in the `data/` directory:
+StarLens needs three astronomy data files in the `app/data/` directory:
 
 - `de421.bsp` — JPL planetary ephemeris (auto-downloaded by Skyfield if missing)
 - `hip_main.dat` — Hipparcos star catalog (auto-downloaded by Skyfield if missing)
@@ -178,7 +154,7 @@ Skyfield will download the first two automatically on first run.
 ### Run
 
 ```bash
-python app.py
+python app/main.py
 ```
 
 Open <http://localhost:8000> and start exploring the night sky!
@@ -188,19 +164,29 @@ Open <http://localhost:8000> and start exploring the night sky!
 ## Project Structure
 
 ```text
-starlens/
-├── app.py                  # Gradio UI (7 tabs, Gemma-centric)
-├── pyproject.toml           # Dependencies and metadata
-├── data/
-│   ├── de421.bsp           # JPL ephemeris
-│   ├── hip_main.dat        # Hipparcos catalog
-│   └── constellationship.fab # Constellation lines
-└── starlens/
-    ├── __init__.py
-    ├── gemma.py            # Gemma 4 client (9 AI methods — all intelligence here)
-    ├── catalog.py          # Sky catalog (Skyfield + Hipparcos)
-    ├── chart.py            # Sky chart renderer (matplotlib)
-    └── engine.py           # Orchestrator (catalog + Gemma + context builder)
+startlens/
+├── app/                        # Application code
+│   ├── main.py                 # Gradio UI (7 tabs, Gemma-centric)
+│   ├── assets/
+│   │   └── gemma_logo.png      # Gemma 4 branding
+│   ├── data/
+│   │   ├── de421.bsp           # JPL ephemeris
+│   │   ├── hip_main.dat        # Hipparcos catalog
+│   │   └── constellationship.fab # Constellation lines
+│   └── starlens/
+│       ├── __init__.py
+│       ├── gemma.py            # Gemma 4 client (9 AI methods)
+│       ├── catalog.py          # Sky catalog (Skyfield + Hipparcos)
+│       ├── chart.py            # Sky chart renderer (matplotlib)
+│       ├── engine.py           # Orchestrator (catalog + Gemma)
+│       ├── cache.py            # Redis caching layer
+│       └── settings.py         # pydantic-settings configuration
+├── Dockerfile
+├── docker-compose.yml
+├── pyproject.toml
+├── .env.example
+├── LICENSE
+└── README.md
 ```
 
 ---

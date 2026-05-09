@@ -1,0 +1,129 @@
+<mxfile host="Electron" agent="StarLens">
+  <diagram name="Architecture" id="arch">
+    <mxGraphModel dx="1040" dy="596" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="800" pageHeight="600" background="#1a1a2e" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="ui_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#36393d;arcSize=8;" value="" vertex="1">
+          <mxGeometry height="90" width="720" x="40" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="tab1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="🌌 Tonight&#39;s Sky" vertex="1">
+          <mxGeometry height="35" width="90" x="82.5" y="75" as="geometry" />
+        </mxCell>
+        <mxCell id="tab2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="💬 Chat" vertex="1">
+          <mxGeometry height="35" width="70" x="182.5" y="75" as="geometry" />
+        </mxCell>
+        <mxCell id="tab3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="🚀 Tour" vertex="1">
+          <mxGeometry height="35" width="70" x="262.5" y="75" as="geometry" />
+        </mxCell>
+        <mxCell id="tab4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="🔄 Compare" vertex="1">
+          <mxGeometry height="35" width="80" x="342.5" y="75" as="geometry" />
+        </mxCell>
+        <mxCell id="tab5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="📸 Identify" vertex="1">
+          <mxGeometry height="35" width="80" x="432.5" y="75" as="geometry" />
+        </mxCell>
+        <mxCell id="tab6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="🔍 Deep Dive" vertex="1">
+          <mxGeometry height="35" width="85" x="522.5" y="75" as="geometry" />
+        </mxCell>
+        <mxCell id="tab7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="📋 Planner" vertex="1">
+          <mxGeometry height="35" width="80" x="617.5" y="75" as="geometry" />
+        </mxCell>
+        <mxCell id="engine_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;arcSize=8;" value="" vertex="1">
+          <mxGeometry height="50" width="720" x="40" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow1" edge="1" parent="1" source="ui_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#36393d;strokeWidth=2;fillColor=#f9f7ed;" target="engine_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gemma_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;arcSize=8;" value="" vertex="1">
+          <mxGeometry height="200" width="340" x="40" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="g1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="chat()" vertex="1">
+          <mxGeometry height="25" width="90" x="60" y="230" as="geometry" />
+        </mxCell>
+        <mxCell id="g2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="guided_tour()" vertex="1">
+          <mxGeometry height="25" width="90" x="60" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="g3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="identify_sky()" vertex="1">
+          <mxGeometry height="25" width="90" x="60" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="g4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="explain_object()" vertex="1">
+          <mxGeometry height="25" width="90" x="60" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="g5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="analyze_chart()" vertex="1">
+          <mxGeometry height="25" width="90" x="60" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="g6" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="explain_why()" vertex="1">
+          <mxGeometry height="25" width="90" x="170" y="230" as="geometry" />
+        </mxCell>
+        <mxCell id="g7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="compare_skies()" vertex="1">
+          <mxGeometry height="25" width="90" x="170" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="g8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="narrate_sky()" vertex="1">
+          <mxGeometry height="25" width="90" x="170" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="g9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="plan_session()" vertex="1">
+          <mxGeometry height="25" width="90" x="170" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="catalog_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;arcSize=8;" value="" vertex="1">
+          <mxGeometry height="200" width="340" x="420" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="c1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="Skyfield ephemeris (Sun/Moon/🪐)" vertex="1">
+          <mxGeometry height="28" width="200" x="440" y="235" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="Hipparcos 118K stars" vertex="1">
+          <mxGeometry height="28" width="200" x="440" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="JPL DE421 planets" vertex="1">
+          <mxGeometry height="28" width="200" x="440" y="305" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="Stellarium 88 constellations" vertex="1">
+          <mxGeometry height="28" width="200" x="440" y="340" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;fontSize=10;" value="Chart renderer (matplotlib)" vertex="1">
+          <mxGeometry height="28" width="200" x="440" y="375" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow2" edge="1" parent="1" source="engine_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#36393d;strokeWidth=2;fillColor=#f9f7ed;" target="gemma_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow3" edge="1" parent="1" source="engine_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#36393d;strokeWidth=2;fillColor=#f9f7ed;" target="catalog_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="roundtrip" edge="1" parent="1" source="c5" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#36393d;strokeWidth=1;dashed=1;dashPattern=8 4;fillColor=#f9f7ed;" target="g5" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="420" y="389" />
+              <mxPoint x="420" y="362" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ollama_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;arcSize=8;" value="" vertex="1">
+          <mxGeometry height="55" width="720" x="40" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow4" edge="1" parent="1" source="gemma_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#36393d;strokeWidth=2;fillColor=#f9f7ed;" target="ollama_box">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="redis" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;strokeWidth=1;dashed=1;fontSize=10;" value="&lt;font color=&#39;#a8a8b3&#39;&gt;Redis (optional cache)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="55" width="120" x="640" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow_redis" edge="1" parent="1" source="engine_box" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#36393d;strokeWidth=1;dashed=1;fillColor=#f9f7ed;" target="redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="_zgBiR7SJJrTIMB8YTZh-1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b style=&quot;white-space: nowrap;&quot;&gt;&lt;font color=&quot;#e94560&quot;&gt;Gradio UI&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="30" width="80" x="342.5" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="_zgBiR7SJJrTIMB8YTZh-2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f9f7ed;strokeColor=#36393d;" value="&lt;b style=&quot;white-space: nowrap;&quot;&gt;&lt;font color=&quot;#e94560&quot;&gt;StarLens Engine&lt;/font&gt;&lt;/b&gt;&lt;span style=&quot;white-space: nowrap;&quot;&gt;&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;font style=&quot;white-space: nowrap; color: rgb(0, 0, 0);&quot;&gt;— orchestration · validation · context building · routing&lt;/font&gt;" vertex="1">
+          <mxGeometry height="30" width="577.5" x="110" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="_zgBiR7SJJrTIMB8YTZh-3" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b style=&quot;white-space: nowrap;&quot;&gt;&lt;font color=&quot;#e94560&quot;&gt;🔭 Sky Catalog&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="30" width="110" x="540" y="205" as="geometry" />
+        </mxCell>
+        <mxCell id="_zgBiR7SJJrTIMB8YTZh-4" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b style=&quot;white-space: nowrap;&quot;&gt;&lt;font color=&quot;#e94560&quot;&gt;🧠 Gemma 4 Client&lt;/font&gt;&lt;/b&gt;" vertex="1">
+          <mxGeometry height="30" width="110" x="270" y="205" as="geometry" />
+        </mxCell>
+        <mxCell id="_zgBiR7SJJrTIMB8YTZh-5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;" value="&lt;b style=&quot;white-space: nowrap;&quot;&gt;&lt;font color=&quot;#e94560&quot;&gt;Ollama&lt;/font&gt;&lt;/b&gt;&lt;span style=&quot;white-space: nowrap;&quot;&gt;&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;font color=&quot;#a8a8b3&quot; style=&quot;white-space: nowrap;&quot;&gt;(local inference)&lt;/font&gt;&lt;span style=&quot;white-space: nowrap;&quot;&gt;&amp;nbsp;&amp;nbsp;—&amp;nbsp;&amp;nbsp;&lt;/span&gt;&lt;font color=&quot;#ffffff&quot; style=&quot;white-space: nowrap;&quot;&gt;gemma4:e4b&lt;/font&gt;&lt;span style=&quot;white-space: nowrap;&quot;&gt; &lt;/span&gt;&lt;font color=&quot;#a8a8b3&quot; style=&quot;white-space: nowrap;&quot;&gt;(vision)&lt;/font&gt;&lt;span style=&quot;white-space: nowrap;&quot;&gt;&amp;nbsp; · &amp;nbsp;&lt;/span&gt;&lt;font color=&quot;#ffffff&quot; style=&quot;white-space: nowrap;&quot;&gt;gemma4:31b-cloud&lt;/font&gt;&lt;span style=&quot;white-space: nowrap;&quot;&gt; &lt;/span&gt;&lt;font color=&quot;#a8a8b3&quot; style=&quot;white-space: nowrap;&quot;&gt;(reasoning)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="30" width="577.5" x="50" y="432.5" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
