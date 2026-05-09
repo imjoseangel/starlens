@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "starlens"
+version = "0.1.0"
+description = "Gemma 4 Night Sky Companion — identify, learn, and plan your stargazing"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Jose Angel Munoz", email = "josea.munoz@gmail.com" }]
+keywords = ["gemma", "astronomy", "multimodal", "ai", "night-sky"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+    "ollama>=0.4.0",
+    "pydantic-settings>=2.0",
+    "skyfield>=1.49",
+    "astroquery>=0.4.7",
+    "astropy>=6.0",
+    "numpy>=1.26",
+    "matplotlib>=3.8",
+    "Pillow>=10.0",
+    "gradio>=5.0",
+    "timezonefinder>=6.0",
+    "geopy>=2.4",
+]
+
+[project.optional-dependencies]
+cache = ["redis>=5.0"]
+dev = ["pytest>=8.0", "ruff>=0.8.0"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.setuptools.packages.find]
+where = ["app"]

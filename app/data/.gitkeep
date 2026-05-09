@@ -1,0 +1,10 @@
+# Data files
+
+This directory holds astronomy data files:
+
+- `de421.bsp` — JPL planetary ephemeris (Sun, Moon, planets)
+- `hip_main.dat` — Hipparcos star catalog (~118,000 stars)
+- `constellationship.fab` — Stellarium constellation line data
+
+These files are symlinked or copied from the existing astronomy data.
+If missing, Skyfield will download them automatically on first run.

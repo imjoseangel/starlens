@@ -1,0 +1,47 @@
+services:
+  starlens:
+    build: .
+    ports:
+      - "${STARLENS_APP_PORT:-8000}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - STARLENS_OLLAMA_HOST=http://host.docker.internal:11434
+      - STARLENS_REDIS_URL=redis://redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Uncomment to run Ollama in a container instead of using the host:
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   env_file:
+  #     - path: .env
+  #       required: false
+  #   restart: unless-stopped
+
+volumes:
+  redis-data:
+  # ollama-data:
