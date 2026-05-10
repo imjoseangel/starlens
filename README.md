@@ -8,6 +8,8 @@ StarLens doesn't just "use" Gemma 4 — every feature flows through Gemma's inte
 ![Python](https://img.shields.io/badge/Python-3.10+-green?style=for-the-badge)
 ![Gradio](https://img.shields.io/badge/Gradio-UI-orange?style=for-the-badge)
 
+![StarLens Demo](docs/demo.gif)
+
 ---
 
 ## Why Gemma 4?
