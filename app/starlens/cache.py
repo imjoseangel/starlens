@@ -7,12 +7,14 @@ redundant work. Gracefully degrades when Redis is unavailable.
 import hashlib
 import json
 import logging
+import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _redis = None
 _available = False
+_lock = threading.Lock()
 
 
 def _connect() -> None:
@@ -22,28 +24,33 @@ def _connect() -> None:
     if _redis is not None:
         return
 
-    from .settings import settings  # pylint: disable=import-outside-toplevel
+    with _lock:
+        # Double-check after acquiring lock
+        if _redis is not None:
+            return
 
-    url = settings.redis.url
-    if not url:
-        _available = False
-        return
+        from .settings import settings  # pylint: disable=import-outside-toplevel
 
-    try:
-        import redis  # pylint: disable=import-outside-toplevel
+        url = settings.redis.url
+        if not url:
+            _available = False
+            return
 
-        _redis = redis.from_url(
-            url,
-            decode_responses=True,
-            socket_connect_timeout=2,
-        )
-        _redis.ping()
-        _available = True
-        logger.info("Redis cache connected: %s", url)
-    except Exception:  # pylint: disable=broad-exception-caught
-        _redis = None
-        _available = False
-        logger.info("Redis unavailable — caching disabled")
+        try:
+            import redis  # pylint: disable=import-outside-toplevel
+
+            _redis = redis.from_url(
+                url,
+                decode_responses=True,
+                socket_connect_timeout=2,
+            )
+            _redis.ping()
+            _available = True
+            logger.info("Redis cache connected: %s", url)
+        except Exception:  # pylint: disable=broad-exception-caught
+            _redis = None
+            _available = False
+            logger.info("Redis unavailable — caching disabled")
 
 
 def _cache_key(prefix: str, *parts: Any) -> str:

@@ -42,7 +42,7 @@ class StarLensEngine:
         """
         # Step 1: Gemma 4 identifies objects from the photo
         logger.info("Identifying photo: lat=%s, lon=%s", lat, lon)
-        location = f"{lat:.2f}°, {lon:.2f}°" if lat and lon else ""
+        location = f"{lat:.2f}°, {lon:.2f}°" if lat is not None and lon is not None else ""
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
         gemma_result = self.gemma.identify_sky(
@@ -86,7 +86,7 @@ class StarLensEngine:
     def explain(self, object_name: str) -> str:
         """Get a Gemma 4 deep-dive explanation of any celestial object.
 
-        Feeds the star catalog as context via the 128K window so Gemma 4
+        Feeds the star catalog as context via the 256K window so Gemma 4
         can reference precise data while writing engaging explanations.
         """
         logger.info("Deep dive on: %s", object_name)

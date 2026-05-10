@@ -18,11 +18,13 @@ class GeminiSettings(BaseSettings):
     )
     model_identify: str = Field(
         default="gemma-4-26b-a4b-it",
-        description="Gemma 4 MoE model for multimodal identification (4B active params — fast & efficient)",
+        description="Gemma 4 MoE model for multimodal identification (4B active params — "
+        "fast & efficient)",
     )
     model_reason: str = Field(
         default="gemma-4-31b-it",
-        description="Gemma 4 Dense 31B for deep reasoning, planning, and explanation (256K context)",
+        description="Gemma 4 Dense 31B for deep reasoning, planning, and explanation "
+        "(256K context)",
     )
     available_models: list[str] = Field(
         default=["gemma-4-26b-a4b-it", "gemma-4-31b-it"],

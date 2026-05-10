@@ -425,7 +425,7 @@ class SkyCatalog:
         }
 
     def get_star_catalog_summary(self, max_mag: float = 4.0) -> str:
-        """Build a text summary of the star catalog for Gemma 4's 128K context."""
+        """Build a text summary of the star catalog for Gemma 4's 256K context."""
         bright = self.stars[self.stars.magnitude <= max_mag].sort_values("magnitude")
 
         lines = [
@@ -481,6 +481,6 @@ class SkyCatalog:
         elif pct < 75:
             return "Waxing Gibbous"
         elif pct < 97:
-            return "Full Moon" if pct > 90 else "Waning Gibbous"
+            return "Waning Gibbous" if pct < 90 else "Full Moon"
         else:
             return "Full Moon"

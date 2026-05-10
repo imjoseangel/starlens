@@ -3,7 +3,7 @@
 Uses Google AI Studio (Gemini API) to access Gemma 4 natively:
 - Multimodal: identifies celestial objects from night sky photos
 - Reasoning: explains astronomical phenomena with chain-of-thought
-- 128K context: processes full star catalogs for observation planning
+- 256K context: processes full star catalogs for observation planning
 """
 
 import base64
@@ -247,7 +247,9 @@ class GemmaClient:
             '"direction_facing": "estimated cardinal direction"}'
         )
 
-        image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+        suffix = path.suffix.lower()
+        mime = "image/png" if suffix == ".png" else "image/jpeg"
+        image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime)
         raw = self._call(
             [image_part, prompt],
             temperature=_opts.temperature_identify,
@@ -266,7 +268,7 @@ class GemmaClient:
         """Use Gemma 4 reasoning to explain an astronomical object.
 
         Covers mythology, science, observation tips, and interesting facts.
-        The 128K context window allows feeding full catalog data.
+        The 256K context window allows feeding full catalog data.
         """
         cached = cache.get("explain", object_name)
         if cached is not None:
@@ -348,10 +350,10 @@ class GemmaClient:
         for msg in history or []:
             role = "user" if msg["role"] == "user" else "model"
             contents.append(
-                types.Content(role=role, parts=[types.Part.from_text(msg["content"])])
+                types.Content(role=role, parts=[types.Part.from_text(text=msg["content"])])
             )
         contents.append(
-            types.Content(role="user", parts=[types.Part.from_text(user_message)])
+            types.Content(role="user", parts=[types.Part.from_text(text=user_message)])
         )
 
         logger.info(

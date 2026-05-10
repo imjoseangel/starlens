@@ -1,7 +1,7 @@
 """Sky chart renderer — generates beautiful sky maps using matplotlib.
 
 Produces dark-themed star charts with constellation lines, planet markers,
-and labels. Used both in the Streamlit UI and for Gemma 4 multimodal
+and labels. Used both in the Gradio UI and for Gemma 4 multimodal
 verification (render a chart → feed it back to Gemma to confirm identification).
 """
 
@@ -67,13 +67,14 @@ def render_sky_chart(
     zenith = observer.at(t).from_altaz(alt_degrees=90, az_degrees=0)
     projection = build_stereographic_projection(zenith)
 
-    # Project all stars
+    # Project all stars into a temporary copy (avoid mutating shared catalog)
     star_positions = observer.at(t).observe(Star.from_dataframe(catalog.stars))
-    catalog.stars["x"], catalog.stars["y"] = projection(star_positions)
+    stars_df = catalog.stars.copy()
+    stars_df["x"], stars_df["y"] = projection(star_positions)
 
     # Filter by magnitude
-    bright_mask = catalog.stars.magnitude <= max_mag
-    magnitude = catalog.stars["magnitude"][bright_mask]
+    bright_mask = stars_df.magnitude <= max_mag
+    magnitude = stars_df["magnitude"][bright_mask]
     marker_size = (0.5 + max_mag - magnitude) ** 2.0
 
     # Constellation lines
@@ -81,13 +82,13 @@ def render_sky_chart(
     edges_s1 = [s1 for s1, _ in edges]
 
     xy1 = (
-        catalog.stars[["x", "y"]]
-        .loc[[s for s in edges_s1 if s in catalog.stars.index]]
+        stars_df[["x", "y"]]
+        .loc[[s for s in edges_s1 if s in stars_df.index]]
         .values
     )
     xy2 = (
-        catalog.stars[["x", "y"]]
-        .loc[[s for s in [s2 for _, s2 in edges] if s in catalog.stars.index]]
+        stars_df[["x", "y"]]
+        .loc[[s for s in [s2 for _, s2 in edges] if s in stars_df.index]]
         .values
     )
 
@@ -112,8 +113,8 @@ def render_sky_chart(
 
     # Draw stars
     ax.scatter(
-        catalog.stars["x"][bright_mask],
-        catalog.stars["y"][bright_mask],
+        stars_df["x"][bright_mask],
+        stars_df["y"][bright_mask],
         s=marker_size,
         color=COLORS["star"],
         alpha=0.8,
@@ -123,9 +124,9 @@ def render_sky_chart(
     # Label bright named stars
     highlight_set = set(highlight_objects or [])
     for hip_id, name in NAMED_STARS.items():
-        if hip_id not in catalog.stars.index:
+        if hip_id not in stars_df.index:
             continue
-        row = catalog.stars.loc[hip_id]
+        row = stars_df.loc[hip_id]
         if float(row["magnitude"]) > 2.5:  # type: ignore[arg-type]
             continue
 

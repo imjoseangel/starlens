@@ -12,20 +12,22 @@ import json
 import logging
 import os
 import tempfile
-
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
 from starlens.engine import StarLensEngine
 from starlens.settings import settings
 
 os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
 
 import gradio as gr  # pylint: disable=wrong-import-position
-from geopy.geocoders import Nominatim  # type: ignore[import-not-found,import-untyped]  # pylint: disable=wrong-import-position
-from PIL import Image  # pylint: disable=wrong-import-position
-
 import httpx  # pylint: disable=wrong-import-position
+from geopy.geocoders import (
+    Nominatim,  # type: ignore[import-not-found,import-untyped]  # pylint: disable=wrong-import-position
+)
 from google.genai import errors as genai_errors  # pylint: disable=wrong-import-position
+from PIL import Image  # pylint: disable=wrong-import-position
 
 logging.basicConfig(
     level=getattr(logging, settings.app.log_level.upper(), logging.INFO),
@@ -36,29 +38,37 @@ logger = logging.getLogger(__name__)
 
 # ─── Engine singleton ───────────────────────────────────────
 _engine: StarLensEngine | None = None
-_engine_host: str | None = None
+_engine_key: str | None = None
 _engine_model: str | None = None
+_engine_lock = threading.Lock()
 
 
 def get_engine(
     api_key: str | None = None, model: str | None = None
 ) -> StarLensEngine:
-    global _engine, _engine_host, _engine_model  # pylint: disable=global-statement
+    global _engine, _engine_key, _engine_model  # pylint: disable=global-statement
 
     key = api_key or settings.gemini.api_key
     data_dir = Path(__file__).parent / "data"
-    if _engine is None or _engine_host != key or _engine_model != model:
-        logger.info("Initializing engine: model=%s", model)
-        _engine = StarLensEngine(data_dir=data_dir, api_key=key, model=model)
-        _engine_host = key
-        _engine_model = model
+    if _engine is None or _engine_key != key or _engine_model != model:
+        with _engine_lock:
+            if _engine is None or _engine_key != key or _engine_model != model:
+                logger.info("Initializing engine: model=%s", model)
+                _engine = StarLensEngine(data_dir=data_dir, api_key=key, model=model)
+                _engine_key = key
+                _engine_model = model
     return _engine
+
+
+_geocoder = Nominatim(user_agent="starlens")
+_geocoder_lock = threading.Lock()
 
 
 def geocode(city: str) -> tuple[float, float]:
     try:
         logger.debug("Geocoding city: %s", city)
-        loc = Nominatim(user_agent="starlens").geocode(city)
+        with _geocoder_lock:
+            loc = _geocoder.geocode(city)
         if loc:
             logger.debug("Geocoded %s → (%.4f, %.4f)", city, loc.latitude, loc.longitude)
             return round(loc.latitude, 4), round(loc.longitude, 4)
@@ -340,8 +350,10 @@ def fn_why_object(object_name: str, city: str, api_key: str, model: str):
     logger.info("Why object requested: %s from %s", object_name, city)
     try:
         lat, lon = geocode(city)
+        yield f"🔭 Computing sky for **{object_name.strip()}**… please wait."
         engine = get_engine(api_key, model)
         accumulated = ""
+        yield "⏳ Gemma 4 is thinking…"
         for chunk in engine.explain_why_stream(object_name.strip(), lat, lon):
             accumulated += chunk or ""
             yield accumulated
@@ -353,8 +365,10 @@ def fn_analyze_chart(city: str, api_key: str, model: str):
     logger.info("Chart analysis requested for %s", city)
     try:
         lat, lon = geocode(city)
+        yield "🔭 Computing sky chart… please wait."
         engine = get_engine(api_key, model)
         accumulated = ""
+        yield "⏳ Gemma 4 is analyzing…"
         for chunk in engine.analyze_sky_chart_stream(lat, lon):
             accumulated += chunk or ""
             yield accumulated
@@ -519,7 +533,10 @@ def fn_identify(image, city: str, api_key: str, model: str):
                 tmp.write(image)
             tmp_path = tmp.name
 
-        result = engine.identify_photo(tmp_path, lat=lat, lon=lon)
+        try:
+            result = engine.identify_photo(tmp_path, lat=lat, lon=lon)
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
         gemma_id = result["gemma_identification"]
 
         lines = []
@@ -576,6 +593,7 @@ def fn_explain(object_name: str, api_key: str, model: str):
     try:
         engine = get_engine(api_key, model)
         accumulated = ""
+        yield f"⏳ Gemma 4 is researching **{object_name.strip()}**…"
         for chunk in engine.explain_stream(object_name.strip()):
             accumulated += chunk or ""
             yield accumulated

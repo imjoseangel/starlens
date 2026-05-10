@@ -18,6 +18,7 @@ classifiers = [
 ]
 dependencies = [
     "google-genai>=1.0.0",
+    "httpx>=0.25",
     "pydantic-settings>=2.0",
     "skyfield>=1.49",
     "astroquery>=0.4.7",
