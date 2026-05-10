@@ -147,7 +147,7 @@ StarLens needs three astronomy data files in the `app/data/` directory:
 
 - `de421.bsp` — JPL planetary ephemeris (auto-downloaded by Skyfield if missing)
 - `hip_main.dat` — Hipparcos star catalog (auto-downloaded by Skyfield if missing)
-- `constellationship.fab` — Stellarium constellation outlines ([download](https://github.com/Stellarium/stellarium/blob/master/skycultures/modern/constellationship.fab))
+- `constellationship.fab` — Stellarium constellation outlines
 
 Skyfield will download the first two automatically on first run.
 
