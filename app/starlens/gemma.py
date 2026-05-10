@@ -1,6 +1,6 @@
 """Gemma 4 client — the brain of StarLens.
 
-Gemma 4 does ALL the intelligent work:
+Uses Google AI Studio (Gemini API) to access Gemma 4 natively:
 - Multimodal: identifies celestial objects from night sky photos
 - Reasoning: explains astronomical phenomena with chain-of-thought
 - 128K context: processes full star catalogs for observation planning
@@ -11,43 +11,218 @@ import json
 import logging
 from pathlib import Path
 
-import ollama
+from google import genai
+from google.genai import types
 
 from . import cache
 from .settings import settings
 
 logger = logging.getLogger(__name__)
 
-_cfg = settings.ollama
+_cfg = settings.gemini
 _opts = settings.options
 _ttl_llm = settings.redis.ttl_llm
 
+# ── System prompts ────────────────────────────────────────────────────────────
+_SYS_ASTRONOMER = (
+    "You are an expert astronomer who makes the cosmos accessible and exciting."
+)
+
+_SYS_GUIDE = (
+    "You are an experienced stargazing guide."
+    " Be precise with times, directions, and practical advice."
+)
+
+_SYS_TOUR_GUIDE = (
+    "You are an enthusiastic, knowledgeable stargazing guide. Be specific with"
+    " directions and altitudes. Write as if you're standing next to the person."
+)
+
+_SYS_ORBITAL = (
+    "You are an astronomer who makes orbital mechanics and celestial geometry"
+    " intuitive and exciting."
+)
+
+_SYS_CHAT = (
+    "You are StarLens, an expert AI astronomer companion. You have access to "
+    "real-time astronomical data computed from NASA/JPL ephemeris and the Hipparcos "
+    "star catalog. Use this data to answer questions accurately.\n\n"
+    "When the user asks about something in the sky, reference the real computed "
+    "positions. Be conversational, enthusiastic, and precise.\n\n"
+    "If asked 'what's that bright thing in the east?', look at the data for objects "
+    "in the east with high altitude or low magnitude (bright)."
+)
+
+_TOUR_STEP_LABELS = [
+    "most impressive",
+    "second most interesting",
+    "a hidden gem",
+    "something unexpected",
+    "the grand finale",
+]
+
 
 class GemmaClient:
-    """Gemma 4 client via Ollama for astronomical intelligence."""
+    """Gemma 4 client via Google AI Studio for astronomical intelligence."""
 
-    def __init__(self, host: str | None = None, model: str | None = None):
-        self.host = host or _cfg.host
-        self.client = ollama.Client(host=self.host, timeout=_cfg.timeout)
+    def __init__(self, api_key: str | None = None, model: str | None = None):
+        self.api_key = api_key or _cfg.api_key
+        self.client = genai.Client(api_key=self.api_key)
         self.default_model = model or _cfg.model_reason
+
+    # ── Internal helpers ──────────────────────────────────────────────────────
+
+    def _config(
+        self, temperature: float, system: str | None = None
+    ) -> types.GenerateContentConfig:
+        return types.GenerateContentConfig(
+            temperature=temperature,
+            max_output_tokens=_cfg.max_output_tokens,
+            system_instruction=system,
+        )
+
+    def _call(
+        self,
+        contents: str | list,
+        *,
+        system: str | None = None,
+        temperature: float = 0.5,
+        model: str | None = None,
+    ) -> str:
+        """Single non-streaming generation call."""
+        response = self.client.models.generate_content(
+            model=model or self.default_model,
+            contents=contents,
+            config=self._config(temperature, system),
+        )
+        return response.text or ""
+
+    def _stream(
+        self,
+        contents: str | list,
+        *,
+        system: str | None = None,
+        temperature: float = 0.5,
+        model: str | None = None,
+    ):
+        """Streaming generation — yields text chunks."""
+        for chunk in self.client.models.generate_content_stream(
+            model=model or self.default_model,
+            contents=contents,
+            config=self._config(temperature, system),
+        ):
+            yield chunk.text or ""
+
+    # ── Prompt builders ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _explain_prompt(object_name: str, catalog_context: str) -> str:
+        prompt = (
+            f"Tell me everything fascinating about **{object_name}**:\n\n"
+            "1. **What it is** — type, distance, physical properties\n"
+            "2. **Mythology & history** — stories from different cultures\n"
+            "3. **How to find it** — practical observation tips\n"
+            "4. **Why it matters** — scientific significance\n"
+            "5. **Fun fact** — something surprising most people don't know\n\n"
+            "Be engaging, accurate, and inspiring. Write for a curious beginner."
+        )
+        if catalog_context:
+            prompt = f"## Reference Data\n\n{catalog_context}\n\n{prompt}"
+        return prompt
+
+    @staticmethod
+    def _tour_prompt(sky_context: str, step: int, total_steps: int) -> str:
+        label = _TOUR_STEP_LABELS[min(step, len(_TOUR_STEP_LABELS) - 1)]
+        intro = (
+            "Start with the most impressive object visible right now."
+            if step == 0
+            else ""
+        )
+        outro = (
+            "This is the final stop — end with something inspiring."
+            if step == total_steps - 1
+            else ""
+        )
+        return (
+            f"You are a stargazing guide leading a live sky tour. "
+            f"This is step {step + 1} of {total_steps}.\n\n"
+            f"## Tonight's Sky Data\n{sky_context}\n\n"
+            "Generate ONLY this one tour stop. Include:\n"
+            "- **Direction to face** (cardinal direction)\n"
+            "- **Where to look** (altitude in degrees — 'halfway up' or 'near the horizon')\n"
+            "- **What you'll see** and why it's interesting\n"
+            "- **A surprising fact** about this object\n"
+            "- **Transition** — a teaser for the next stop\n\n"
+            f"{intro}{outro}\n"
+            f"Step {step + 1}: pick the {label} object."
+        )
+
+    @staticmethod
+    def _chart_prompt(sky_context: str) -> str:
+        return (
+            "You are looking at a sky chart rendered from real ephemeris data. "
+            "Analyze this chart and provide:\n\n"
+            "1. **What's most striking** — the standout objects or patterns\n"
+            "2. **Constellation highlights** — which constellations are well-placed\n"
+            "3. **Planet positions** — identify the orange dots (planets)\n"
+            "4. **Best targets** — what should an observer focus on first\n"
+            "5. **Hidden treasures** — deep-sky objects near visible constellations\n\n"
+            f"Cross-reference with this computed data:\n{sky_context}\n\n"
+            "Be specific and observational — describe what you SEE in the chart."
+        )
+
+    @staticmethod
+    def _why_prompt(object_name: str, object_data: str, sky_context: str) -> str:
+        return (
+            f"A stargazer is looking at **{object_name}** and asks: 'Why is it there?'\n\n"
+            f"Object data: {object_data}\n\n"
+            f"Full sky context:\n{sky_context}\n\n"
+            "Explain in an engaging way:\n"
+            "1. **Why it's visible right now** — Earth's position, season, time of night\n"
+            "2. **Why it's in that direction** — orbital mechanics or stellar position\n"
+            "3. **How it will move** — what happens over the next few hours\n"
+            "4. **When it's best** — peak viewing times this month\n"
+            "5. **Connection to other objects** — what's nearby and why\n\n"
+            "Make orbital mechanics intuitive. Use analogies."
+        )
+
+    @staticmethod
+    def _compare_prompt(sky_now: str, sky_later: str, time_diff: str) -> str:
+        return (
+            f"Compare these two sky snapshots ({time_diff} apart) and tell the story "
+            f"of how the sky transforms:\n\n"
+            f"## Sky NOW\n{sky_now}\n\n"
+            f"## Sky LATER\n{sky_later}\n\n"
+            "Describe:\n"
+            "1. **What appears** — objects that rise into view\n"
+            "2. **What disappears** — objects that set below the horizon\n"
+            "3. **What moves** — how constellations and planets shift\n"
+            "4. **The drama** — any particularly beautiful moments "
+            "(planet near Moon, constellation rising, etc.)\n"
+            "5. **Best moment** — when should the observer be outside "
+            "for the peak experience?\n\n"
+            "Write as a narrative — tell the story of the night unfolding."
+        )
+
+    # ── Public API ────────────────────────────────────────────────────────────
 
     def identify_sky(
         self, image_path: str, location: str = "", timestamp: str = ""
     ) -> dict:
         """Identify celestial objects in a night sky photograph.
 
-        Uses Gemma 4's multimodal vision to recognize stars, constellations,
+        Uses Gemma 4's native multimodal vision to recognize stars, constellations,
         planets, the Moon, and deep-sky objects from a photo.
         """
         logger.info(
-            "LLM identify_sky: model=%s, image=%s", self.default_model, image_path
+            "LLM identify_sky: model=%s, image=%s", _cfg.model_identify, image_path
         )
         path = Path(image_path)
         if not path.exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
 
         with open(path, "rb") as f:
-            image_b64 = base64.b64encode(f.read()).decode("utf-8")
+            image_bytes = f.read()
 
         location_hint = f"\nPhoto taken from: {location}" if location else ""
         time_hint = f"\nPhoto taken at: {timestamp}" if timestamp else ""
@@ -72,16 +247,12 @@ class GemmaClient:
             '"direction_facing": "estimated cardinal direction"}'
         )
 
-        response = self.client.chat(
-            model=self.default_model,
-            messages=[{"role": "user", "content": prompt, "images": [image_b64]}],
-            options={
-                "temperature": _opts.temperature_identify,
-                "num_ctx": _opts.num_ctx_identify,
-            },
+        image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+        raw = self._call(
+            [image_part, prompt],
+            temperature=_opts.temperature_identify,
+            model=_cfg.model_identify,
         )
-
-        raw = response.message.content or ""
         try:
             start = raw.find("{")
             end = raw.rfind("}") + 1
@@ -89,7 +260,6 @@ class GemmaClient:
                 return json.loads(raw[start:end])
         except json.JSONDecodeError:
             pass
-
         return {"raw_analysis": raw}
 
     def explain_object(self, object_name: str, catalog_context: str = "") -> str:
@@ -104,77 +274,21 @@ class GemmaClient:
             return cached
 
         logger.info("LLM explain_object: %s, model=%s", object_name, self.default_model)
-
-        prompt = (
-            f"You are a passionate astronomer and science communicator.\n\n"
-            f"Tell me everything fascinating about **{object_name}**:\n\n"
-            "1. **What it is** — type, distance, physical properties\n"
-            "2. **Mythology & history** — stories from different cultures\n"
-            "3. **How to find it** — practical observation tips\n"
-            "4. **Why it matters** — scientific significance\n"
-            "5. **Fun fact** — something surprising most people don't know\n\n"
-            "Be engaging, accurate, and inspiring. Write for a curious beginner."
+        result = self._call(
+            self._explain_prompt(object_name, catalog_context),
+            system=_SYS_ASTRONOMER,
+            temperature=_opts.temperature_explain,
         )
-
-        if catalog_context:
-            prompt = f"## Reference Data\n\n{catalog_context}\n\n{prompt}"
-
-        response = self.client.chat(
-            model=self.default_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert astronomer who makes"
-                        " the cosmos accessible and exciting."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            options={
-                "temperature": _opts.temperature_explain,
-                "num_ctx": _opts.num_ctx_large,
-            },
-        )
-        result = response.message.content or ""
         cache.put("explain", object_name, value=result, ttl=_ttl_llm)
         return result
 
     def explain_object_stream(self, object_name: str, catalog_context: str = ""):
         """Streaming version of explain_object."""
-        prompt = (
-            f"You are a passionate astronomer and science communicator.\n\n"
-            f"Tell me everything fascinating about **{object_name}**:\n\n"
-            "1. **What it is** \u2014 type, distance, physical properties\n"
-            "2. **Mythology & history** \u2014 stories from different cultures\n"
-            "3. **How to find it** \u2014 practical observation tips\n"
-            "4. **Why it matters** \u2014 scientific significance\n"
-            "5. **Fun fact** \u2014 something surprising most people don't know\n\n"
-            "Be engaging, accurate, and inspiring. Write for a curious beginner."
+        yield from self._stream(
+            self._explain_prompt(object_name, catalog_context),
+            system=_SYS_ASTRONOMER,
+            temperature=_opts.temperature_explain,
         )
-        if catalog_context:
-            prompt = f"## Reference Data\n\n{catalog_context}\n\n{prompt}"
-
-        stream = self.client.chat(
-            model=self.default_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert astronomer who makes"
-                        " the cosmos accessible and exciting."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            options={
-                "temperature": _opts.temperature_explain,
-                "num_ctx": _opts.num_ctx_large,
-            },
-            stream=True,
-        )
-        for chunk in stream:
-            yield chunk.message.content
 
     def plan_observation(
         self, visible_objects: str, location: str, preferences: str = ""
@@ -188,7 +302,6 @@ class GemmaClient:
             "LLM plan_observation: location=%s, model=%s", location, self.default_model
         )
         pref_hint = f"\nObserver preferences: {preferences}" if preferences else ""
-
         prompt = (
             f"You are a stargazing guide planning tonight's observation session.\n\n"
             f"**Location:** {location}{pref_hint}\n\n"
@@ -202,367 +315,120 @@ class GemmaClient:
             "5. **Photography tips** — camera settings for the best shots\n\n"
             "Be specific with directions (N/S/E/W), altitudes (degrees above horizon), and times."
         )
-
-        response = self.client.chat(
-            model=self.default_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an experienced stargazing guide."
-                        " Be precise with times, directions,"
-                        " and practical advice."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            options={
-                "temperature": _opts.temperature_plan,
-                "num_ctx": _opts.num_ctx_large,
-            },
-        )
-        return response.message.content or ""
+        return self._call(prompt, system=_SYS_GUIDE, temperature=_opts.temperature_plan)
 
     def narrate_sky(self, sky_context: str) -> str:
-        """Generate an engaging narrative about tonight's sky.
-
-        A short, poetic yet scientific description perfect for sharing.
-        """
+        """Generate an engaging narrative about tonight's sky."""
         cached = cache.get("narrate", sky_context)
         if cached is not None:
             logger.debug("Cache hit for narrate")
             return cached
 
         logger.info("LLM narrate_sky: model=%s", self.default_model)
-
         prompt = (
             f"Based on this astronomical data, write a 2-3 paragraph engaging narration "
             f"of tonight's sky — something you'd share with a friend to get them excited "
             f"about going outside and looking up. Mix science with wonder.\n\n{sky_context}"
         )
-
-        response = self.client.chat(
-            model=self.default_model,
-            messages=[{"role": "user", "content": prompt}],
-            options={
-                "temperature": _opts.temperature_narrate,
-                "num_ctx": _opts.num_ctx_default,
-            },
-        )
-        result = response.message.content or ""
+        result = self._call(prompt, temperature=_opts.temperature_narrate)
         cache.put("narrate", sky_context, value=result, ttl=_ttl_llm)
         return result
 
     def chat(
         self, user_message: str, sky_context: str, history: list[dict] | None = None
     ) -> str:
-        """Interactive sky chat — Gemma answers questions using real sky data.
+        """Interactive sky chat — Gemma answers questions grounded in real sky data.
 
         The sky context (computed ephemeris) is injected as system knowledge
         so Gemma reasons from real data, not hallucination.
         """
-        system = (
-            "You are StarLens, an expert AI astronomer companion. You have access to "
-            "real-time astronomical data computed from NASA/JPL ephemeris and the Hipparcos "
-            "star catalog. Use this data to answer questions accurately.\n\n"
-            "When the user asks about something in the sky, reference the real computed "
-            "positions below. Be conversational, enthusiastic, and precise.\n\n"
-            "If asked 'what's that bright thing in the east?', look at the data for objects "
-            "in the east with high altitude or low magnitude (bright).\n\n"
-            f"## Current Sky Data\n\n{sky_context}"
-        )
+        system = f"{_SYS_CHAT}\n\n## Current Sky Data\n\n{sky_context}"
 
-        messages = [{"role": "system", "content": system}]
-        if history:
-            messages.extend(history)
-        messages.append({"role": "user", "content": user_message})
+        contents: list = []
+        for msg in history or []:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append(
+                types.Content(role=role, parts=[types.Part.from_text(msg["content"])])
+            )
+        contents.append(
+            types.Content(role="user", parts=[types.Part.from_text(user_message)])
+        )
 
         logger.info(
-            "LLM chat: %d messages, model=%s", len(messages), self.default_model
+            "LLM chat: %d messages, model=%s", len(contents), self.default_model
         )
-        response = self.client.chat(
+        response = self.client.models.generate_content(
             model=self.default_model,
-            messages=messages,
-            options={
-                "temperature": _opts.temperature_chat,
-                "num_ctx": _opts.num_ctx_chat,
-            },
+            contents=contents,
+            config=self._config(_opts.temperature_chat, system),
         )
-        return response.message.content or ""
+        return response.text or ""
 
     def guided_tour(self, sky_context: str, step: int = 0, total_steps: int = 5) -> str:
-        """Generate one step of a guided sky tour.
-
-        Each step tells the observer exactly where to look and what they'll see.
-        """
-        prompt = (
-            f"You are a stargazing guide leading a live sky tour. This is step {step + 1} "
-            f"of {total_steps}.\n\n"
-            f"## Tonight's Sky Data\n{sky_context}\n\n"
-            "Generate ONLY this one tour stop. Include:\n"
-            "- **Direction to face** (cardinal direction)\n"
-            "- **Where to look** (altitude in degrees — 'halfway up' or 'near the horizon')\n"
-            "- **What you'll see** and why it's interesting\n"
-            "- **A surprising fact** about this object\n"
-            "- **Transition** — a teaser for the next stop\n\n"
-            f"{'Start with the most impressive object visible right now.' if step == 0 else ''}"
-            f"{'This is the final stop — end with something inspiring.'
-               if step == total_steps - 1 else ''}\n"
-            f"Step {step + 1}: pick the "
-            f"{['most impressive', 'second most interesting',
-               'a hidden gem', 'something unexpected',
-               'the grand finale'][min(step, 4)]}"
-            " object."
+        """Generate one step of a guided sky tour."""
+        return self._call(
+            self._tour_prompt(sky_context, step, total_steps),
+            system=_SYS_TOUR_GUIDE,
+            temperature=_opts.temperature_tour,
         )
-
-        response = self.client.chat(
-            model=self.default_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an enthusiastic, knowledgeable"
-                        " stargazing guide. Be specific with"
-                        " directions and altitudes. Write as if"
-                        " you're standing next to the person."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            options={
-                "temperature": _opts.temperature_tour,
-                "num_ctx": _opts.num_ctx_default,
-            },
-        )
-        return response.message.content or ""
 
     def guided_tour_stream(self, sky_context: str, step: int = 0, total_steps: int = 5):
         """Streaming version of guided_tour."""
-        prompt = (
-            f"You are a stargazing guide leading a live sky tour. This is step {step + 1} "
-            f"of {total_steps}.\n\n"
-            f"## Tonight's Sky Data\n{sky_context}\n\n"
-            "Generate ONLY this one tour stop. Include:\n"
-            "- **Direction to face** (cardinal direction)\n"
-            "- **Where to look** (altitude in degrees \u2014 'halfway up' or 'near the horizon')\n"
-            "- **What you'll see** and why it's interesting\n"
-            "- **A surprising fact** about this object\n"
-            "- **Transition** \u2014 a teaser for the next stop\n\n"
-            f"{'Start with the most impressive object visible right now.' if step == 0 else ''}"
-            f"{'This is the final stop \u2014 end with something inspiring.'
-               if step == total_steps - 1 else ''}\n"
-            f"Step {step + 1}: pick the "
-            f"{['most impressive', 'second most interesting',
-               'a hidden gem', 'something unexpected',
-               'the grand finale'][min(step, 4)]}"
-            " object."
+        yield from self._stream(
+            self._tour_prompt(sky_context, step, total_steps),
+            system=_SYS_TOUR_GUIDE,
+            temperature=_opts.temperature_tour,
         )
-
-        stream = self.client.chat(
-            model=self.default_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an enthusiastic, knowledgeable"
-                        " stargazing guide. Be specific with"
-                        " directions and altitudes. Write as if"
-                        " you're standing next to the person."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            options={
-                "temperature": _opts.temperature_tour,
-                "num_ctx": _opts.num_ctx_default,
-            },
-            stream=True,
-        )
-        for chunk in stream:
-            yield chunk.message.content
 
     def analyze_chart(self, chart_image_b64: str, sky_context: str) -> str:
-        """Multimodal round-trip: Gemma analyzes a sky chart IT could have generated.
-
-        Proves Gemma can both consume and reason about astronomical visualizations.
-        """
-        prompt = (
-            "You are looking at a sky chart rendered from real ephemeris data. "
-            "Analyze this chart and provide:\n\n"
-            "1. **What's most striking** — the standout objects or patterns\n"
-            "2. **Constellation highlights** — which constellations are well-placed\n"
-            "3. **Planet positions** — identify the orange dots (planets)\n"
-            "4. **Best targets** — what should an observer focus on first\n"
-            "5. **Hidden treasures** — deep-sky objects near visible constellations\n\n"
-            "Cross-reference with this computed data:\n"
-            f"{sky_context}\n\n"
-            "Be specific and observational — describe what you SEE in the chart."
+        """Multimodal round-trip: Gemma analyzes a sky chart using native vision."""
+        image_part = types.Part.from_bytes(
+            data=base64.b64decode(chart_image_b64), mime_type="image/png"
         )
-
-        response = self.client.chat(
-            model=self.default_model,
-            messages=[{"role": "user", "content": prompt, "images": [chart_image_b64]}],
-            options={
-                "temperature": _opts.temperature_chart,
-                "num_ctx": _opts.num_ctx_default,
-            },
+        return self._call(
+            [image_part, self._chart_prompt(sky_context)],
+            temperature=_opts.temperature_chart,
+            model=_cfg.model_identify,
         )
-        return response.message.content or ""
 
     def analyze_chart_stream(self, chart_image_b64: str, sky_context: str):
         """Streaming version of analyze_chart — yields chunks as they arrive."""
-        prompt = (
-            "You are looking at a sky chart rendered from real ephemeris data. "
-            "Analyze this chart and provide:\n\n"
-            "1. **What's most striking** — the standout objects or patterns\n"
-            "2. **Constellation highlights** — which constellations are well-placed\n"
-            "3. **Planet positions** — identify the orange dots (planets)\n"
-            "4. **Best targets** — what should an observer focus on first\n"
-            "5. **Hidden treasures** — deep-sky objects near visible constellations\n\n"
-            "Cross-reference with this computed data:\n"
-            f"{sky_context}\n\n"
-            "Be specific and observational — describe what you SEE in the chart."
+        image_part = types.Part.from_bytes(
+            data=base64.b64decode(chart_image_b64), mime_type="image/png"
         )
-
-        stream = self.client.chat(
-            model=self.default_model,
-            messages=[{"role": "user", "content": prompt, "images": [chart_image_b64]}],
-            options={
-                "temperature": _opts.temperature_chart,
-                "num_ctx": _opts.num_ctx_default,
-            },
-            stream=True,
+        yield from self._stream(
+            [image_part, self._chart_prompt(sky_context)],
+            temperature=_opts.temperature_chart,
+            model=_cfg.model_identify,
         )
-        for chunk in stream:
-            yield chunk.message.content
 
     def explain_why(self, object_name: str, object_data: str, sky_context: str) -> str:
-        """Explain WHY an object is where it is — orbital mechanics, seasons, geometry."""
-        prompt = (
-            f"A stargazer is looking at **{object_name}** and asks: 'Why is it there?'\n\n"
-            f"Object data: {object_data}\n\n"
-            f"Full sky context:\n{sky_context}\n\n"
-            "Explain in an engaging way:\n"
-            "1. **Why it's visible right now** — Earth's position, season, time of night\n"
-            "2. **Why it's in that direction** — orbital mechanics or stellar position\n"
-            "3. **How it will move** — what happens over the next few hours\n"
-            "4. **When it's best** — peak viewing times this month\n"
-            "5. **Connection to other objects** — what's nearby and why\n\n"
-            "Make orbital mechanics intuitive. Use analogies."
+        """Explain WHY an object is where it is — orbital mechanics and geometry."""
+        return self._call(
+            self._why_prompt(object_name, object_data, sky_context),
+            system=_SYS_ORBITAL,
+            temperature=_opts.temperature_why,
         )
-
-        response = self.client.chat(
-            model=self.default_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an astronomer who makes orbital"
-                        " mechanics and celestial geometry"
-                        " intuitive and exciting."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            options={
-                "temperature": _opts.temperature_why,
-                "num_ctx": _opts.num_ctx_chat,
-            },
-        )
-        return response.message.content or ""
 
     def explain_why_stream(self, object_name: str, object_data: str, sky_context: str):
-        """Streaming version of explain_why — yields chunks as they arrive."""
-        prompt = (
-            f"A stargazer is looking at **{object_name}** and asks: 'Why is it there?'\n\n"
-            f"Object data: {object_data}\n\n"
-            f"Full sky context:\n{sky_context}\n\n"
-            "Explain in an engaging way:\n"
-            "1. **Why it's visible right now** — Earth's position, season, time of night\n"
-            "2. **Why it's in that direction** — orbital mechanics or stellar position\n"
-            "3. **How it will move** — what happens over the next few hours\n"
-            "4. **When it's best** — peak viewing times this month\n"
-            "5. **Connection to other objects** — what's nearby and why\n\n"
-            "Make orbital mechanics intuitive. Use analogies."
+        """Streaming version — yields text chunks as Gemma generates them."""
+        yield from self._stream(
+            self._why_prompt(object_name, object_data, sky_context),
+            system=_SYS_ORBITAL,
+            temperature=_opts.temperature_why,
         )
-
-        stream = self.client.chat(
-            model=self.default_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an astronomer who makes orbital"
-                        " mechanics and celestial geometry"
-                        " intuitive and exciting."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            options={
-                "temperature": _opts.temperature_why,
-                "num_ctx": _opts.num_ctx_chat,
-            },
-            stream=True,
-        )
-        for chunk in stream:
-            yield chunk.message.content
 
     def compare_skies(self, sky_now: str, sky_later: str, time_diff: str) -> str:
         """Compare two sky states and narrate what changes."""
-        prompt = (
-            f"Compare these two sky snapshots ({time_diff} apart) and tell the story "
-            f"of how the sky transforms:\n\n"
-            f"## Sky NOW\n{sky_now}\n\n"
-            f"## Sky LATER\n{sky_later}\n\n"
-            "Describe:\n"
-            "1. **What appears** — objects that rise into view\n"
-            "2. **What disappears** — objects that set below the horizon\n"
-            "3. **What moves** — how constellations and planets shift\n"
-            "4. **The drama** — any particularly beautiful moments "
-            "(planet near Moon, constellation rising, etc.)\n"
-            "5. **Best moment** — when should the observer be outside "
-            "for the peak experience?\n\n"
-            "Write as a narrative — tell the story of the night unfolding."
+        return self._call(
+            self._compare_prompt(sky_now, sky_later, time_diff),
+            temperature=_opts.temperature_tour,
         )
-
-        response = self.client.chat(
-            model=self.default_model,
-            messages=[{"role": "user", "content": prompt}],
-            options={
-                "temperature": _opts.temperature_tour,
-                "num_ctx": _opts.num_ctx_chat,
-            },
-        )
-        return response.message.content or ""
 
     def compare_skies_stream(self, sky_now: str, sky_later: str, time_diff: str):
-        """Streaming version of compare_skies — yields chunks as they arrive."""
-        prompt = (
-            f"Compare these two sky snapshots ({time_diff} apart) and tell the story "
-            f"of how the sky transforms:\n\n"
-            f"## Sky NOW\n{sky_now}\n\n"
-            f"## Sky LATER\n{sky_later}\n\n"
-            "Describe:\n"
-            "1. **What appears** — objects that rise into view\n"
-            "2. **What disappears** — objects that set below the horizon\n"
-            "3. **What moves** — how constellations and planets shift\n"
-            "4. **The drama** — any particularly beautiful moments "
-            "(planet near Moon, constellation rising, etc.)\n"
-            "5. **Best moment** — when should the observer be outside "
-            "for the peak experience?\n\n"
-            "Write as a narrative — tell the story of the night unfolding."
-        )
-
+        """Streaming compare — yields chunks as Gemma narrates the transformation."""
         logger.info("LLM compare_skies_stream: model=%s", self.default_model)
-        stream = self.client.chat(
-            model=self.default_model,
-            messages=[{"role": "user", "content": prompt}],
-            options={
-                "temperature": _opts.temperature_tour,
-                "num_ctx": _opts.num_ctx_chat,
-            },
-            stream=True,
+        yield from self._stream(
+            self._compare_prompt(sky_now, sky_later, time_diff),
+            temperature=_opts.temperature_tour,
         )
-        for chunk in stream:
-            yield chunk.message.content

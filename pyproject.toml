@@ -17,7 +17,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
-    "ollama>=0.4.0",
+    "google-genai>=1.0.0",
     "pydantic-settings>=2.0",
     "skyfield>=1.49",
     "astroquery>=0.4.7",

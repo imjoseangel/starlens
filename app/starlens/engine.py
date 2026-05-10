@@ -17,7 +17,7 @@ from .settings import settings
 
 logger = logging.getLogger(__name__)
 
-_cfg = settings.ollama
+_cfg = settings.gemini
 
 
 class StarLensEngine:
@@ -26,11 +26,11 @@ class StarLensEngine:
     def __init__(
         self,
         data_dir: str | Path | None = None,
-        ollama_host: str | None = None,
+        api_key: str | None = None,
         model: str | None = None,
     ):
         self.catalog = SkyCatalog(data_dir=data_dir)
-        self.gemma = GemmaClient(host=ollama_host or _cfg.host, model=model)
+        self.gemma = GemmaClient(api_key=api_key or _cfg.api_key, model=model)
 
     def identify_photo(
         self, image_path: str, lat: float | None = None, lon: float | None = None
@@ -197,43 +197,14 @@ class StarLensEngine:
         """Explain WHY an object is where it is — orbital mechanics and geometry."""
         sky = self.catalog.whats_up(lat, lon)
         sky_context = self._format_visible_objects(sky)
-
-        # Find the specific object in the sky data
-        object_data = ""
-        for p in sky.get("planets", []):
-            if p["name"].lower() == object_name.lower():
-                object_data = json.dumps(p)
-                break
-        for s in sky.get("bright_stars", []):
-            if s["name"].lower() == object_name.lower():
-                object_data = json.dumps(s)
-                break
-        if not object_data:
-            moon = sky.get("moon", {})
-            if object_name.lower() == "moon" and moon.get("visible"):
-                object_data = json.dumps(moon)
-
+        object_data = self._find_object_data(object_name, sky)
         return self.gemma.explain_why(object_name, object_data, sky_context)
 
     def explain_why_stream(self, object_name: str, lat: float, lon: float):
         """Streaming version — yields text chunks as Gemma generates them."""
         sky = self.catalog.whats_up(lat, lon)
         sky_context = self._format_visible_objects(sky)
-
-        object_data = ""
-        for p in sky.get("planets", []):
-            if p["name"].lower() == object_name.lower():
-                object_data = json.dumps(p)
-                break
-        for s in sky.get("bright_stars", []):
-            if s["name"].lower() == object_name.lower():
-                object_data = json.dumps(s)
-                break
-        if not object_data:
-            moon = sky.get("moon", {})
-            if object_name.lower() == "moon" and moon.get("visible"):
-                object_data = json.dumps(moon)
-
+        object_data = self._find_object_data(object_name, sky)
         yield from self.gemma.explain_why_stream(object_name, object_data, sky_context)
 
     def compare_skies(self, lat: float, lon: float, hours_ahead: float = 3.0) -> dict:
@@ -289,6 +260,20 @@ class StarLensEngine:
         """Get formatted sky context for external use (e.g. chat)."""
         sky = self.catalog.whats_up(lat, lon)
         return self._format_visible_objects(sky)
+
+    def _find_object_data(self, object_name: str, sky: dict) -> str:
+        """Find a named object in sky data and return its JSON representation."""
+        name_lower = object_name.lower()
+        for p in sky.get("planets", []):
+            if p["name"].lower() == name_lower:
+                return json.dumps(p)
+        for s in sky.get("bright_stars", []):
+            if s["name"].lower() == name_lower:
+                return json.dumps(s)
+        moon = sky.get("moon", {})
+        if name_lower == "moon" and moon.get("visible"):
+            return json.dumps(moon)
+        return ""
 
     def _validate_identification(self, gemma_result: dict, ephemeris: dict) -> dict:
         """Cross-reference Gemma 4's identification with ephemeris truth."""

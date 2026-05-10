@@ -25,7 +25,7 @@ from geopy.geocoders import Nominatim  # type: ignore[import-not-found,import-un
 from PIL import Image  # pylint: disable=wrong-import-position
 
 import httpx  # pylint: disable=wrong-import-position
-import ollama  # pylint: disable=wrong-import-position
+from google.genai import errors as genai_errors  # pylint: disable=wrong-import-position
 
 logging.basicConfig(
     level=getattr(logging, settings.app.log_level.upper(), logging.INFO),
@@ -41,18 +41,16 @@ _engine_model: str | None = None
 
 
 def get_engine(
-    ollama_host: str | None = None, model: str | None = None
+    api_key: str | None = None, model: str | None = None
 ) -> StarLensEngine:
     global _engine, _engine_host, _engine_model  # pylint: disable=global-statement
 
-    host = ollama_host or settings.ollama.host
+    key = api_key or settings.gemini.api_key
     data_dir = Path(__file__).parent / "data"
-    if _engine is None or _engine_host != host or _engine_model != model:
-        logger.info("Initializing engine: host=%s, model=%s", host, model)
-        _engine = StarLensEngine(
-            data_dir=data_dir, ollama_host=host, model=model
-        )
-        _engine_host = host
+    if _engine is None or _engine_host != key or _engine_model != model:
+        logger.info("Initializing engine: model=%s", model)
+        _engine = StarLensEngine(data_dir=data_dir, api_key=key, model=model)
+        _engine_host = key
         _engine_model = model
     return _engine
 
@@ -208,62 +206,74 @@ HEADER_HTML = f"""
 """
 
 
-# ─── Ollama error handling ──────────────────────────────────
-_OLLAMA_ERRORS = (
+# ─── Google AI error handling ────────────────────────────────
+_GOOGLE_ERRORS = (
+    genai_errors.APIError,
     httpx.ReadTimeout,
     httpx.ConnectTimeout,
     httpx.ConnectError,
     httpx.TimeoutException,
-    ollama.ResponseError,
     ConnectionError,
     TimeoutError,
 )
 
 _ERR_TIMEOUT = (
     "⏳ **Gemma 4 is taking too long to respond.** "
-    "The model may be loading or the request is too complex. "
+    "The request may be too complex or the API is under load. "
     "Please try again in a moment."
 )
 
 _ERR_CONNECTION = (
-    "🔌 **Cannot connect to Ollama.** "
-    "Make sure Ollama is running and the host address is correct.\n\n"
-    "Start Ollama with: `ollama serve`"
+    "🔌 **Cannot reach Google AI Studio.** "
+    "Check your internet connection and try again."
 )
 
 _ERR_UNAUTHORIZED = (
-    "🔑 **Ollama returned 401 Unauthorized.** "
-    "The model may require an API key. Set `OLLAMA_API_KEY` "
-    "in your environment or `.env` file."
+    "🔑 **Invalid or missing Google AI Studio API key.** "
+    "Get your key at https://aistudio.google.com/apikey and set `STARLENS_GEMINI_API_KEY` "
+    "in your `.env` file or paste it in the API Key field above."
+)
+
+_ERR_QUOTA = (
+    "⏱️ **Google AI Studio rate limit reached.** "
+    "You've exceeded your quota. Wait a moment and try again, "
+    "or check your usage at https://aistudio.google.com/"
 )
 
 _ERR_MODEL = (
-    "⚠️ **Model error from Ollama.** "
-    "The model may not be downloaded yet. "
-    "Pull it with: `ollama pull {model}`"
+    "⚠️ **Model not found or unavailable.** "
+    "Check the model name — available Gemma 4 models: "
+    "`gemma-4-26b-a4b-it`, `gemma-4-31b-it`."
 )
 
 
-def _ollama_error_msg(exc: Exception) -> str:
-    """Return a user-friendly message for Ollama/network errors."""
-    logger.error("Ollama error: %s: %s", type(exc).__name__, exc)
+def _google_error_msg(exc: Exception) -> str:
+    """Return a user-friendly message for Google AI / network errors."""
+    logger.error("Google AI error: %s: %s", type(exc).__name__, exc)
     if isinstance(exc, (httpx.ReadTimeout, httpx.ConnectTimeout, TimeoutError)):
         return _ERR_TIMEOUT
-    if isinstance(exc, ollama.ResponseError):
-        if exc.status_code == 401:  # type: ignore[union-attr]
+    if isinstance(exc, genai_errors.ClientError):
+        msg = str(exc)
+        if "401" in msg or "403" in msg or "API_KEY" in msg.upper() or "api key" in msg.lower():
             return _ERR_UNAUTHORIZED
+        if "429" in msg or "quota" in msg.lower() or "rate" in msg.lower():
+            return _ERR_QUOTA
+        if "404" in msg or "not found" in msg.lower():
+            return _ERR_MODEL
         return _ERR_MODEL
+    if isinstance(exc, genai_errors.ServerError):
+        return _ERR_TIMEOUT
     return _ERR_CONNECTION
 
 
 # ═══════════════════════════════════════════════════════════
 #  Tab 1 — Tonight's Sky
 # ═══════════════════════════════════════════════════════════
-def fn_tonights_sky(city: str, ollama_host: str, model: str):
+def fn_tonights_sky(city: str, api_key: str, model: str):
     logger.info("Tonight's sky requested for %s", city)
     try:
         lat, lon = geocode(city)
-        engine = get_engine(ollama_host, model)
+        engine = get_engine(api_key, model)
 
         sky = engine.catalog.whats_up(lat, lon)
         chart_bytes = engine.render_chart(lat, lon)
@@ -318,38 +328,38 @@ def fn_tonights_sky(city: str, ollama_host: str, model: str):
         narration = engine.gemma.narrate_sky(sky_summary)
 
         return chart_img, info_md, narration
-    except _OLLAMA_ERRORS as exc:
-        msg = _ollama_error_msg(exc)
+    except _GOOGLE_ERRORS as exc:
+        msg = _google_error_msg(exc)
         return None, msg, msg
 
 
-def fn_why_object(object_name: str, city: str, ollama_host: str, model: str):
+def fn_why_object(object_name: str, city: str, api_key: str, model: str):
     if not object_name.strip():
         yield "Please enter an object name (e.g., Jupiter, Sirius, Moon)."
         return
     logger.info("Why object requested: %s from %s", object_name, city)
     try:
         lat, lon = geocode(city)
-        engine = get_engine(ollama_host, model)
+        engine = get_engine(api_key, model)
         accumulated = ""
         for chunk in engine.explain_why_stream(object_name.strip(), lat, lon):
             accumulated += chunk or ""
             yield accumulated
-    except _OLLAMA_ERRORS as exc:
-        yield _ollama_error_msg(exc)
+    except _GOOGLE_ERRORS as exc:
+        yield _google_error_msg(exc)
 
 
-def fn_analyze_chart(city: str, ollama_host: str, model: str):
+def fn_analyze_chart(city: str, api_key: str, model: str):
     logger.info("Chart analysis requested for %s", city)
     try:
         lat, lon = geocode(city)
-        engine = get_engine(ollama_host, model)
+        engine = get_engine(api_key, model)
         accumulated = ""
         for chunk in engine.analyze_sky_chart_stream(lat, lon):
             accumulated += chunk or ""
             yield accumulated
-    except _OLLAMA_ERRORS as exc:
-        yield _ollama_error_msg(exc)
+    except _GOOGLE_ERRORS as exc:
+        yield _google_error_msg(exc)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -359,7 +369,7 @@ def fn_chat(
     user_msg: str,
     history: list,
     city: str,
-    ollama_host: str,
+    api_key: str,
     model: str,
 ):
     if not user_msg.strip():
@@ -368,7 +378,7 @@ def fn_chat(
     logger.info("Chat message: %s", user_msg[:80])
     try:
         lat, lon = geocode(city)
-        engine = get_engine(ollama_host, model)
+        engine = get_engine(api_key, model)
 
         # Convert Gradio chat history to engine format
         engine_history = []
@@ -384,20 +394,20 @@ def fn_chat(
         response = engine.chat(user_msg, lat, lon, history=engine_history)
         history.append({"role": "user", "content": user_msg})
         history.append({"role": "assistant", "content": response})
-    except _OLLAMA_ERRORS as exc:
+    except _GOOGLE_ERRORS as exc:
         history.append({"role": "user", "content": user_msg})
-        history.append({"role": "assistant", "content": _ollama_error_msg(exc)})
+        history.append({"role": "assistant", "content": _google_error_msg(exc)})
     return history, ""
 
 
 # ═══════════════════════════════════════════════════════════
 #  Tab 3 — Guided Tour
 # ═══════════════════════════════════════════════════════════
-def fn_tour_start(total_steps: int, city: str, ollama_host: str, model: str):
+def fn_tour_start(total_steps: int, city: str, api_key: str, model: str):
     logger.info("Guided tour started: %d steps from %s", total_steps, city)
     try:
         lat, lon = geocode(city)
-        engine = get_engine(ollama_host, model)
+        engine = get_engine(api_key, model)
         header = f"### 🚀 Stop 1 of {total_steps}\n\n"
         accumulated = header
         for chunk in engine.guided_tour_step_stream(
@@ -405,8 +415,8 @@ def fn_tour_start(total_steps: int, city: str, ollama_host: str, model: str):
         ):
             accumulated += chunk or ""
             yield accumulated, 1
-    except _OLLAMA_ERRORS as exc:
-        yield _ollama_error_msg(exc), 0
+    except _GOOGLE_ERRORS as exc:
+        yield _google_error_msg(exc), 0
 
 
 def fn_tour_next(
@@ -414,7 +424,7 @@ def fn_tour_next(
     total_steps: int,
     previous_md: str,
     city: str,
-    ollama_host: str,
+    api_key: str,
     model: str,
 ):
     if current_step >= total_steps:
@@ -425,7 +435,7 @@ def fn_tour_next(
         return
     try:
         lat, lon = geocode(city)
-        engine = get_engine(ollama_host, model)
+        engine = get_engine(api_key, model)
         header = f"\n\n---\n\n### 🚀 Stop {current_step + 1}" f" of {total_steps}\n\n"
         logger.debug("Tour step %d/%d", current_step + 1, total_steps)
         accumulated = previous_md + header
@@ -434,18 +444,18 @@ def fn_tour_next(
         ):
             accumulated += chunk or ""
             yield accumulated, current_step + 1
-    except _OLLAMA_ERRORS as exc:
-        yield previous_md + f"\n\n---\n\n{_ollama_error_msg(exc)}", current_step
+    except _GOOGLE_ERRORS as exc:
+        yield previous_md + f"\n\n---\n\n{_google_error_msg(exc)}", current_step
 
 
 # ═══════════════════════════════════════════════════════════
 #  Tab 4 — Sky Comparison
 # ═══════════════════════════════════════════════════════════
-def fn_compare(hours: float, city: str, ollama_host: str, model: str):
+def fn_compare(hours: float, city: str, api_key: str, model: str):
     logger.info("Sky comparison: %s +%.1fh", city, hours)
     try:
         lat, lon = geocode(city)
-        engine = get_engine(ollama_host, model)
+        engine = get_engine(api_key, model)
 
         # Phase 1: charts + planet lists (no LLM, fast)
         chart_now = bytes_to_pil(engine.render_chart(lat, lon))
@@ -477,7 +487,7 @@ def fn_compare(hours: float, city: str, ollama_host: str, model: str):
                     now_md,
                     chart_later,
                     later_md,
-                    "⏳ Gemma is narrating the transformation…",
+                    "⏳ Gemma 4 is narrating the sky transformation…",
                 )
 
             # Phase 2: stream narration chunks
@@ -485,21 +495,21 @@ def fn_compare(hours: float, city: str, ollama_host: str, model: str):
             if chunk:
                 yield chart_now, now_md, chart_later, later_md, narration_acc
 
-    except _OLLAMA_ERRORS as exc:
-        msg = _ollama_error_msg(exc)
+    except _GOOGLE_ERRORS as exc:
+        msg = _google_error_msg(exc)
         yield None, msg, None, "", msg
 
 
 # ═══════════════════════════════════════════════════════════
 #  Tab 5 — Identify Photo
 # ═══════════════════════════════════════════════════════════
-def fn_identify(image, city: str, ollama_host: str, model: str):
+def fn_identify(image, city: str, api_key: str, model: str):
     if image is None:
         return "Please upload a night sky photo first."
 
     try:
         lat, lon = geocode(city)
-        engine = get_engine(ollama_host, model)
+        engine = get_engine(api_key, model)
         logger.info("Identifying photo from %s", city)
 
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
@@ -551,41 +561,41 @@ def fn_identify(image, city: str, ollama_host: str, model: str):
             lines.append(f"\n### Analysis\n{gemma_id['raw_analysis']}")
 
         return "\n".join(lines) if lines else "No objects identified."
-    except _OLLAMA_ERRORS as exc:
-        return _ollama_error_msg(exc)
+    except _GOOGLE_ERRORS as exc:
+        return _google_error_msg(exc)
 
 
 # ═══════════════════════════════════════════════════════════
 #  Tab 6 — Deep Dive
 # ═══════════════════════════════════════════════════════════
-def fn_explain(object_name: str, ollama_host: str, model: str):
+def fn_explain(object_name: str, api_key: str, model: str):
     if not object_name.strip():
         yield "Please enter an object name."
         return
     logger.info("Deep dive requested: %s", object_name)
     try:
-        engine = get_engine(ollama_host, model)
+        engine = get_engine(api_key, model)
         accumulated = ""
         for chunk in engine.explain_stream(object_name.strip()):
             accumulated += chunk or ""
             yield accumulated
-    except _OLLAMA_ERRORS as exc:
-        yield _ollama_error_msg(exc)
+    except _GOOGLE_ERRORS as exc:
+        yield _google_error_msg(exc)
 
 
 # ═══════════════════════════════════════════════════════════
 #  Tab 7 — Plan Session
 # ═══════════════════════════════════════════════════════════
-def fn_plan(preferences: str, city: str, ollama_host: str, model: str):
+def fn_plan(preferences: str, city: str, api_key: str, model: str):
     logger.info("Session plan requested for %s", city)
     try:
         lat, lon = geocode(city)
-        engine = get_engine(ollama_host, model)
+        engine = get_engine(api_key, model)
         plan = engine.plan_session(lat, lon, preferences=preferences)
         chart = bytes_to_pil(engine.render_chart(lat, lon))
         return plan, chart
-    except _OLLAMA_ERRORS as exc:
-        return _ollama_error_msg(exc), None
+    except _GOOGLE_ERRORS as exc:
+        return _google_error_msg(exc), None
 
 
 # ═══════════════════════════════════════════════════════════
@@ -649,15 +659,17 @@ with gr.Blocks(
                 placeholder="City name, e.g. 'Tokyo, Japan'",
             )
         with gr.Column(scale=1):
-            host_input = gr.Textbox(
-                label="⚙️ Ollama Host",
-                value=settings.ollama.host,
+            api_key_input = gr.Textbox(
+                label="🔑 Google AI Studio API Key",
+                value=settings.gemini.api_key,
+                type="password",
+                placeholder="Paste your key from aistudio.google.com/apikey",
             )
         with gr.Column(scale=1):
             model_select = gr.Dropdown(
                 label="🧠 Gemma 4 Model",
-                choices=settings.ollama.available_models,
-                value=settings.ollama.model_reason,
+                choices=settings.gemini.available_models,
+                value=settings.gemini.model_reason,
             )
 
     # ── Tabs ────────────────────────────────────────────
@@ -684,7 +696,7 @@ with gr.Blocks(
 
             sky_btn.click(
                 fn=fn_tonights_sky,
-                inputs=[city_input, host_input, model_select],
+                inputs=[city_input, api_key_input, model_select],
                 outputs=[sky_chart, sky_info, sky_narration],
             )
 
@@ -709,7 +721,7 @@ with gr.Blocks(
                 inputs=[
                     why_input,
                     city_input,
-                    host_input,
+                    api_key_input,
                     model_select,
                 ],
                 outputs=[why_output],
@@ -720,7 +732,7 @@ with gr.Blocks(
                 inputs=[
                     why_input,
                     city_input,
-                    host_input,
+                    api_key_input,
                     model_select,
                 ],
                 outputs=[why_output],
@@ -741,7 +753,7 @@ with gr.Blocks(
 
             chart_analyze_btn.click(
                 fn=fn_analyze_chart,
-                inputs=[city_input, host_input, model_select],
+                inputs=[city_input, api_key_input, model_select],
                 outputs=[chart_analysis_output],
             )
 
@@ -772,7 +784,7 @@ with gr.Blocks(
                     chat_input,
                     chatbot,
                     city_input,
-                    host_input,
+                    api_key_input,
                     model_select,
                 ],
                 outputs=[chatbot, chat_input],
@@ -783,7 +795,7 @@ with gr.Blocks(
                     chat_input,
                     chatbot,
                     city_input,
-                    host_input,
+                    api_key_input,
                     model_select,
                 ],
                 outputs=[chatbot, chat_input],
@@ -821,7 +833,7 @@ with gr.Blocks(
                 inputs=[
                     tour_steps_slider,
                     city_input,
-                    host_input,
+                    api_key_input,
                     model_select,
                 ],
                 outputs=[tour_output, tour_step_state],
@@ -833,7 +845,7 @@ with gr.Blocks(
                     tour_steps_slider,
                     tour_output,
                     city_input,
-                    host_input,
+                    api_key_input,
                     model_select,
                 ],
                 outputs=[tour_output, tour_step_state],
@@ -877,7 +889,7 @@ with gr.Blocks(
                 inputs=[
                     compare_hours,
                     city_input,
-                    host_input,
+                    api_key_input,
                     model_select,
                 ],
                 outputs=[
@@ -922,7 +934,7 @@ with gr.Blocks(
                 inputs=[
                     photo_input,
                     city_input,
-                    host_input,
+                    api_key_input,
                     model_select,
                 ],
                 outputs=[identify_output],
@@ -947,12 +959,12 @@ with gr.Blocks(
 
             explain_btn.click(
                 fn=fn_explain,
-                inputs=[explain_input, host_input, model_select],
+                inputs=[explain_input, api_key_input, model_select],
                 outputs=[explain_output],
             )
             explain_input.submit(
                 fn=fn_explain,
-                inputs=[explain_input, host_input, model_select],
+                inputs=[explain_input, api_key_input, model_select],
                 outputs=[explain_output],
             )
 
@@ -988,7 +1000,7 @@ with gr.Blocks(
                 inputs=[
                     plan_prefs,
                     city_input,
-                    host_input,
+                    api_key_input,
                     model_select,
                 ],
                 outputs=[plan_output, plan_chart],

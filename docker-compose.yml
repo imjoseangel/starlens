@@ -7,10 +7,8 @@ services:
       - path: .env
         required: false
     environment:
-      - STARLENS_OLLAMA_HOST=http://host.docker.internal:11434
+      - STARLENS_GEMINI_API_KEY=${STARLENS_GEMINI_API_KEY:-}
       - STARLENS_REDIS_URL=redis://redis:6379/0
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_started
@@ -30,18 +28,5 @@ services:
       timeout: 3s
       retries: 3
 
-  # Uncomment to run Ollama in a container instead of using the host:
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   ports:
-  #     - "11434:11434"
-  #   volumes:
-  #     - ollama-data:/root/.ollama
-  #   env_file:
-  #     - path: .env
-  #       required: false
-  #   restart: unless-stopped
-
 volumes:
   redis-data:
-  # ollama-data:

@@ -7,35 +7,35 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class OllamaSettings(BaseSettings):
-    """Ollama connection and model configuration."""
+class GeminiSettings(BaseSettings):
+    """Google AI Studio (Gemini API) connection and Gemma 4 model configuration."""
 
-    model_config = SettingsConfigDict(env_prefix="STARLENS_OLLAMA_")
+    model_config = SettingsConfigDict(env_prefix="STARLENS_GEMINI_")
 
-    host: str = Field(
-        default="http://localhost:11434",
-        description="Ollama server URL",
-    )
-    timeout: int = Field(
-        default=180,
-        description="HTTP timeout in seconds for Ollama requests",
+    api_key: str = Field(
+        default="",
+        description="Google AI Studio API key (https://aistudio.google.com/apikey)",
     )
     model_identify: str = Field(
-        default="gemma4:e4b",
-        description="Model for fast multimodal identification",
+        default="gemma-4-26b-a4b-it",
+        description="Gemma 4 MoE model for multimodal identification (4B active params — fast & efficient)",
     )
     model_reason: str = Field(
-        default="gemma4:31b-cloud",
-        description="Model for deep reasoning and explanation",
+        default="gemma-4-31b-it",
+        description="Gemma 4 Dense 31B for deep reasoning, planning, and explanation (256K context)",
     )
     available_models: list[str] = Field(
-        default=["gemma4:e2b", "gemma4:e4b", "gemma4:31b-cloud"],
-        description="Models shown in the UI dropdown",
+        default=["gemma-4-26b-a4b-it", "gemma-4-31b-it"],
+        description="Gemma 4 models shown in the UI dropdown",
+    )
+    max_output_tokens: int = Field(
+        default=8192,
+        description="Maximum tokens to generate per response",
     )
 
 
 class ModelOptions(BaseSettings):
-    """Inference options passed to Ollama (temperature, context window)."""
+    """Inference options — temperature per task type."""
 
     model_config = SettingsConfigDict(env_prefix="STARLENS_OPTS_")
 
@@ -47,11 +47,6 @@ class ModelOptions(BaseSettings):
     temperature_chat: float = Field(default=0.5)
     temperature_chart: float = Field(default=0.3)
     temperature_why: float = Field(default=0.4)
-
-    num_ctx_identify: int = Field(default=8192)
-    num_ctx_default: int = Field(default=32768)
-    num_ctx_chat: int = Field(default=65536)
-    num_ctx_large: int = Field(default=131072)
 
 
 class AppSettings(BaseSettings):
@@ -102,7 +97,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    ollama: OllamaSettings = Field(default_factory=OllamaSettings)
+    gemini: GeminiSettings = Field(default_factory=GeminiSettings)
     options: ModelOptions = Field(default_factory=ModelOptions)
     app: AppSettings = Field(default_factory=AppSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)

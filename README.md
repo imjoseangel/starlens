@@ -2,11 +2,12 @@
 
 **Your AI-powered stargazing assistant where Gemma 4 is the protagonist — identifying, narrating, guiding, reasoning, and conversing about the sky, all grounded in real NASA/JPL ephemeris data.**
 
-StarLens doesn't just "use" Gemma 4 — every feature flows through Gemma's intelligence. It's not a sky app with AI bolted on; it's an AI astronomy companion that happens to know the real positions of every object above you.
+StarLens doesn't just "use" Gemma 4 — every feature flows through Gemma's intelligence. It's not a sky app with AI bolted on; it's an AI astronomy companion that happens to know the real positions of every object above you, powered natively through the **Gemini API via Google AI Studio**.
 
 ![StarLens](https://img.shields.io/badge/Gemma_4-Powered-blue?style=for-the-badge)
 ![Python](https://img.shields.io/badge/Python-3.10+-green?style=for-the-badge)
 ![Gradio](https://img.shields.io/badge/Gradio-UI-orange?style=for-the-badge)
+![Google AI Studio](https://img.shields.io/badge/Google_AI_Studio-API-red?style=for-the-badge)
 
 ![StarLens Demo](docs/demo.gif)
 
@@ -19,7 +20,7 @@ StarLens showcases **7 distinct Gemma 4 capabilities** — more than any other f
 | Gemma 4 Capability          | How StarLens Uses It                                                                   |
 |-----------------------------|----------------------------------------------------------------------------------------|
 | **Multimodal Vision**       | Identify objects in uploaded sky photos AND analyze rendered sky charts (round-trip)   |
-| **128K Context Window**     | Load the entire Hipparcos star catalog for deep astronomical reasoning                 |
+| **256K Context Window**     | Load the entire Hipparcos star catalog for deep astronomical reasoning                 |
 | **Multi-Turn Conversation** | Interactive sky chat with full ephemeris context — ask anything about what's above you |
 | **Structured Reasoning**    | "Why is this object here?" — explains orbital mechanics, seasons, and geometry         |
 | **Narrative Generation**    | Guided sky tours with step-by-step directions and surprising facts                     |
@@ -28,18 +29,20 @@ StarLens showcases **7 distinct Gemma 4 capabilities** — more than any other f
 
 ### Intentional Model Selection
 
-StarLens uses **two Gemma 4 variants** for different tasks:
+StarLens uses **two Gemma 4 variants** for different tasks — accessed natively via the Gemini API:
 
-- **`gemma4:e4b`** — Fast multimodal identification (vision tasks, low latency)
-- **`gemma4:31b-cloud`** — Deep reasoning with full star catalog context (128K window, chat, tours)
+| Model                    | Type                                          | Why we chose it                                                                                                                                             |
+|--------------------------|-----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **`gemma-4-26b-a4b-it`** | Mixture-of-Experts (26B total, **4B active**) | Fast multimodal identification — vision tasks need low latency, and activating only 4B params delivers it                                                   |
+| **`gemma-4-31b-it`**     | Dense 31B                                     | Deep reasoning with full star catalog context — the **256K context window** handles the entire Hipparcos dataset, chat history, and sky data simultaneously |
 
-Users can switch models in the sidebar based on their hardware.
+Users can switch models in the sidebar based on task.
 
 ---
 
 ## Features
 
-### 💬 Interactive Sky Chat *(NEW — Gemma as Protagonist)*
+### 💬 Interactive Sky Chat *(Gemma as Protagonist)*
 
 Talk to Gemma 4 about the sky — it has your real-time ephemeris loaded:
 
@@ -48,7 +51,7 @@ Talk to Gemma 4 about the sky — it has your real-time ephemeris loaded:
 - Full sky state injected as system context — zero hallucination
 - Gemma reasons from real NASA/JPL data, not training data
 
-### 🚀 Gemma-Guided Sky Tour *(NEW — Gemma as Protagonist)*
+### 🚀 Gemma-Guided Sky Tour *(Gemma as Protagonist)*
 
 Gemma 4 leads you through the sky step-by-step:
 
@@ -57,7 +60,7 @@ Gemma 4 leads you through the sky step-by-step:
 - 3-8 customizable stops based on tonight's visible objects
 - Surprising facts and smooth transitions between stops
 
-### 🔄 Sky Comparison *(NEW — Gemma as Protagonist)*
+### 🔄 Sky Comparison *(Gemma as Protagonist)*
 
 How will the sky transform over time?
 
@@ -92,7 +95,7 @@ Upload a night sky photo and Gemma 4 identifies what's in it:
 
 Ask about any celestial object and get a comprehensive explanation:
 
-- Gemma 4 receives the **full star catalog** via 128K context
+- Gemma 4 receives the **full star catalog** via the 256K context window
 - Science, mythology, observation tips
 - Powered by real astronomical data, not just training data
 
@@ -113,7 +116,7 @@ Gemma 4 creates an optimized stargazing plan:
 
 **Key design decisions:**
 
-- All AI goes through `gemma.py` — Gemma 4 is the sole intelligence (9 methods)
+- All AI goes through `gemma.py` — Gemma 4 is the sole intelligence (9 AI methods, accessed via Gemini API)
 - All astronomy goes through `catalog.py` — real science, not hallucination
 - `engine.py` orchestrates both, builds context, and cross-validates results
 - **Multimodal round-trip**: the chart renderer produces sky maps that are fed BACK to Gemma 4's vision for analysis — proving Gemma can both consume and reason about astronomical data
@@ -125,13 +128,9 @@ Gemma 4 creates an optimized stargazing plan:
 ### Prerequisites
 
 - Python 3.10+
-- [Ollama](https://ollama.com/) with Gemma 4 pulled:
+- A **free** Google AI Studio API key → [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 
-```bash
-ollama pull gemma4:e4b
-# or for deeper reasoning:
-ollama pull gemma4:31b-cloud
-```
+No local GPU or model download needed — Gemma 4 runs on Google's infrastructure.
 
 ### Install
 
@@ -139,9 +138,19 @@ ollama pull gemma4:31b-cloud
 git clone https://github.com/imjoseangel/starlens.git
 cd starlens
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
 ```
+
+### Configure
+
+```bash
+cp .env.example .env
+# Edit .env and set your API key:
+# STARLENS_GEMINI_API_KEY=your_key_here
+```
+
+Or paste your key directly in the **🔑 Google AI Studio API Key** field in the UI at runtime.
 
 ### Data Files
 
@@ -161,12 +170,22 @@ python app/main.py
 
 Open <http://localhost:8000> and start exploring the night sky!
 
+### Docker
+
+```bash
+# With Redis cache (recommended)
+STARLENS_GEMINI_API_KEY=your_key docker compose up
+
+# Without cache (simple)
+STARLENS_GEMINI_API_KEY=your_key docker compose run --rm -p 8000:8000 starlens
+```
+
 ---
 
 ## Project Structure
 
 ```text
-startlens/
+starlens/
 ├── app/                           # Application code
 │   ├── main.py                    # Gradio UI (7 tabs, Gemma-centric)
 │   ├── assets/
@@ -177,7 +196,7 @@ startlens/
 │   │   └── constellationship.fab  # Constellation lines
 │   └── starlens/
 │       ├── __init__.py
-│       ├── gemma.py               # Gemma 4 client (9 AI methods)
+│       ├── gemma.py               # Gemma 4 client — Google AI Studio (9 AI methods)
 │       ├── catalog.py             # Sky catalog (Skyfield + Hipparcos)
 │       ├── chart.py               # Sky chart renderer (matplotlib)
 │       ├── engine.py              # Orchestrator (catalog + Gemma)
@@ -215,8 +234,8 @@ startlens/
 
 ## Built With
 
-- **[Gemma 4](https://ai.google.dev/gemma)** — Google's multimodal AI model (12B and 27B variants)
-- **[Ollama](https://ollama.com/)** — Local model inference
+- **[Gemma 4](https://ai.google.dev/gemma)** — Google's open multimodal AI (`gemma-4-26b-a4b-it` MoE + `gemma-4-31b-it` Dense)
+- **[Google AI Studio](https://aistudio.google.com/)** — Gemini API access to Gemma 4 (free tier available)
 - **[Skyfield](https://rhodesmill.org/skyfield/)** — Astronomical ephemeris computation
 - **[Hipparcos](https://www.cosmos.esa.int/web/hipparcos)** — ESA star catalog (~118,000 stars)
 - **[Gradio](https://www.gradio.app/)** — Interactive web UI with dark astronomy theme
