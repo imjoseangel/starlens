@@ -165,22 +165,22 @@ Open <http://localhost:8000> and start exploring the night sky!
 
 ```text
 startlens/
-├── app/                        # Application code
-│   ├── main.py                 # Gradio UI (7 tabs, Gemma-centric)
+├── app/                           # Application code
+│   ├── main.py                    # Gradio UI (7 tabs, Gemma-centric)
 │   ├── assets/
-│   │   └── gemma_logo.png      # Gemma 4 branding
+│   │   └── gemma_logo.png         # Gemma 4 branding
 │   ├── data/
-│   │   ├── de421.bsp           # JPL ephemeris
-│   │   ├── hip_main.dat        # Hipparcos catalog
-│   │   └── constellationship.fab # Constellation lines
+│   │   ├── de421.bsp              # JPL ephemeris
+│   │   ├── hip_main.dat           # Hipparcos catalog
+│   │   └── constellationship.fab  # Constellation lines
 │   └── starlens/
 │       ├── __init__.py
-│       ├── gemma.py            # Gemma 4 client (9 AI methods)
-│       ├── catalog.py          # Sky catalog (Skyfield + Hipparcos)
-│       ├── chart.py            # Sky chart renderer (matplotlib)
-│       ├── engine.py           # Orchestrator (catalog + Gemma)
-│       ├── cache.py            # Redis caching layer
-│       └── settings.py         # pydantic-settings configuration
+│       ├── gemma.py               # Gemma 4 client (9 AI methods)
+│       ├── catalog.py             # Sky catalog (Skyfield + Hipparcos)
+│       ├── chart.py               # Sky chart renderer (matplotlib)
+│       ├── engine.py              # Orchestrator (catalog + Gemma)
+│       ├── cache.py               # Redis caching layer
+│       └── settings.py            # pydantic-settings configuration
 ├── Dockerfile
 ├── docker-compose.yml
 ├── pyproject.toml
