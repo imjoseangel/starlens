@@ -40,7 +40,6 @@ class StarLensEngine:
         Gemma 4 analyzes the photo, then we cross-reference with the real
         ephemeris to validate and enrich the identification.
         """
-        # Step 1: Gemma 4 identifies objects from the photo
         logger.info("Identifying photo: lat=%s, lon=%s", lat, lon)
         location = f"{lat:.2f}°, {lon:.2f}°" if lat is not None and lon is not None else ""
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -49,7 +48,6 @@ class StarLensEngine:
             image_path, location=location, timestamp=timestamp
         )
 
-        # Step 2: Cross-reference with ephemeris for validation
         validation = {}
         if lat is not None and lon is not None:
             sky = self.catalog.whats_up(lat, lon)
@@ -73,10 +71,8 @@ class StarLensEngine:
             when = datetime.now(timezone.utc)
 
         logger.info("Computing tonight's sky: (%.2f, %.2f) at %s", lat, lon, when)
-        # Compute real positions
         sky = self.catalog.whats_up(lat, lon, when=when)
 
-        # Gemma 4 narrates what's special about tonight
         sky_summary = json.dumps(sky, indent=2, default=str)
         narration = self.gemma.narrate_sky(sky_summary)
 
@@ -173,11 +169,9 @@ class StarLensEngine:
         sky = self.catalog.whats_up(lat, lon)
         sky_context = self._format_visible_objects(sky)
 
-        # Render chart
         chart_bytes = self.render_chart(lat, lon)
         chart_b64 = base64.b64encode(chart_bytes).decode("utf-8")
 
-        # Gemma analyzes the chart using vision
         analysis = self.gemma.analyze_chart(chart_b64, sky_context)
 
         return {
@@ -249,10 +243,8 @@ class StarLensEngine:
 
         time_diff = f"{hours_ahead:.0f} hours"
 
-        # First yield: sky data ready, no narration yet
         yield sky_now, sky_later, time_diff, ""
 
-        # Stream narration chunks
         for chunk in self.gemma.compare_skies_stream(text_now, text_later, time_diff):
             yield sky_now, sky_later, time_diff, chunk
 
@@ -283,7 +275,6 @@ class StarLensEngine:
             "missed": [],
         }
 
-        # Check planets
         real_planets = {p["name"].lower() for p in ephemeris.get("planets", [])}
         gemma_planets = {
             p.get("name", "").lower() for p in gemma_result.get("planets", [])
@@ -300,7 +291,6 @@ class StarLensEngine:
                 f"Planet {p.capitalize()} (visible but not identified)"
             )
 
-        # Check constellations
         real_constellations = {
             c["name"].lower() for c in ephemeris.get("constellations", [])
         }

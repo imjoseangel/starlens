@@ -9,6 +9,7 @@ Uses Google AI Studio (Gemini API) to access Gemma 4 natively:
 import base64
 import json
 import logging
+import mimetypes
 from pathlib import Path
 
 from google import genai
@@ -61,13 +62,21 @@ _TOUR_STEP_LABELS = [
     "the grand finale",
 ]
 
+_CHAT_HISTORY_MAX_TURNS = 12
+
 
 class GemmaClient:
     """Gemma 4 client via Google AI Studio for astronomical intelligence."""
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
-        self.api_key = api_key or _cfg.api_key
-        self.client = genai.Client(api_key=self.api_key)
+        key = api_key or _cfg.api_key
+        if not key:
+            raise ValueError(
+                "Google AI Studio API key is required. "
+                "Set STARLENS_GEMINI_API_KEY or paste it in the UI. "
+                "Get a free key at https://aistudio.google.com/apikey"
+            )
+        self.client = genai.Client(api_key=key)
         self.default_model = model or _cfg.model_reason
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -247,8 +256,9 @@ class GemmaClient:
             '"direction_facing": "estimated cardinal direction"}'
         )
 
-        suffix = path.suffix.lower()
-        mime = "image/png" if suffix == ".png" else "image/jpeg"
+        mime, _ = mimetypes.guess_type(path.name)
+        if mime not in {"image/png", "image/jpeg", "image/webp", "image/heic", "image/heif"}:
+            mime = "image/jpeg"
         image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime)
         raw = self._call(
             [image_part, prompt],
@@ -346,8 +356,9 @@ class GemmaClient:
         """
         system = f"{_SYS_CHAT}\n\n## Current Sky Data\n\n{sky_context}"
 
+        recent = (history or [])[-_CHAT_HISTORY_MAX_TURNS * 2:]
         contents: list = []
-        for msg in history or []:
+        for msg in recent:
             role = "user" if msg["role"] == "user" else "model"
             contents.append(
                 types.Content(role=role, parts=[types.Part.from_text(text=msg["content"])])

@@ -7,6 +7,7 @@ Beautiful dark astronomy theme with the Gemma 4 brand front and center.
 from __future__ import annotations
 
 import base64
+import functools
 import io
 import json
 import logging
@@ -64,6 +65,7 @@ _geocoder = Nominatim(user_agent="starlens")
 _geocoder_lock = threading.Lock()
 
 
+@functools.lru_cache(maxsize=256)
 def geocode(city: str) -> tuple[float, float]:
     try:
         logger.debug("Geocoding city: %s", city)
@@ -225,6 +227,7 @@ _GOOGLE_ERRORS = (
     httpx.TimeoutException,
     ConnectionError,
     TimeoutError,
+    ValueError,
 )
 
 _ERR_TIMEOUT = (
@@ -260,6 +263,8 @@ _ERR_MODEL = (
 def _google_error_msg(exc: Exception) -> str:
     """Return a user-friendly message for Google AI / network errors."""
     logger.error("Google AI error: %s: %s", type(exc).__name__, exc)
+    if isinstance(exc, ValueError) and "api key" in str(exc).lower():
+        return _ERR_UNAUTHORIZED
     if isinstance(exc, (httpx.ReadTimeout, httpx.ConnectTimeout, TimeoutError)):
         return _ERR_TIMEOUT
     if isinstance(exc, genai_errors.ClientError):
@@ -289,7 +294,6 @@ def fn_tonights_sky(city: str, api_key: str, model: str):
         chart_bytes = engine.render_chart(lat, lon)
         chart_img = bytes_to_pil(chart_bytes)
 
-        # Build info text
         sun = sky.get("sun", {})
         moon = sky.get("moon", {})
         lines = [f"### Sky Conditions — {city}"]
@@ -333,7 +337,6 @@ def fn_tonights_sky(city: str, api_key: str, model: str):
 
         info_md = "\n".join(lines)
 
-        # Gemma narration
         sky_summary = json.dumps(sky, indent=2, default=str)
         narration = engine.gemma.narrate_sky(sky_summary)
 
@@ -394,7 +397,6 @@ def fn_chat(
         lat, lon = geocode(city)
         engine = get_engine(api_key, model)
 
-        # Convert Gradio chat history to engine format
         engine_history = []
         for msg in history:
             content = msg["content"]
@@ -471,7 +473,6 @@ def fn_compare(hours: float, city: str, api_key: str, model: str):
         lat, lon = geocode(city)
         engine = get_engine(api_key, model)
 
-        # Phase 1: charts + planet lists (no LLM, fast)
         chart_now = bytes_to_pil(engine.render_chart(lat, lon))
         future = datetime.now(timezone.utc) + timedelta(hours=hours)
         chart_later = bytes_to_pil(engine.render_chart(lat, lon, when=future))
@@ -482,7 +483,6 @@ def fn_compare(hours: float, city: str, api_key: str, model: str):
             lat, lon, hours_ahead=hours
         ):
             if first:
-                # Build planet markdown once from first yield
                 planets_now = sky_now.get("planets", [])
                 now_md = f"**Planets:** {len(planets_now)}\n\n"
                 now_md += "\n".join(
@@ -504,7 +504,6 @@ def fn_compare(hours: float, city: str, api_key: str, model: str):
                     "⏳ Gemma 4 is narrating the sky transformation…",
                 )
 
-            # Phase 2: stream narration chunks
             narration_acc += chunk or ""
             if chunk:
                 yield chart_now, now_md, chart_later, later_md, narration_acc

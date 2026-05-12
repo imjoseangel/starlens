@@ -96,137 +96,129 @@ def render_sky_chart(
     xy1, xy2 = xy1[:min_len], xy2[:min_len]
     lines_xy = np.rollaxis(np.array([xy1, xy2]), 1)
 
-    # Set up the figure
     plt.style.use("dark_background")
     fig, ax = plt.subplots(figsize=(10, 10), facecolor=COLORS["background"])
-    ax.set_facecolor(COLORS["background"])
+    try:
+        ax.set_facecolor(COLORS["background"])
 
-    # Draw constellation lines
-    ax.add_collection(
-        LineCollection(
-            list(lines_xy),
-            colors=COLORS["constellation_lines"],
-            linewidths=0.8,
-            alpha=0.6,
-        )
-    )
-
-    # Draw stars
-    ax.scatter(
-        stars_df["x"][bright_mask],
-        stars_df["y"][bright_mask],
-        s=marker_size,
-        color=COLORS["star"],
-        alpha=0.8,
-        zorder=2,
-    )
-
-    # Label bright named stars
-    highlight_set = set(highlight_objects or [])
-    for hip_id, name in NAMED_STARS.items():
-        if hip_id not in stars_df.index:
-            continue
-        row = stars_df.loc[hip_id]
-        if float(row["magnitude"]) > 2.5:  # type: ignore[arg-type]
-            continue
-
-        color = COLORS["highlight"] if name in highlight_set else COLORS["text"]
-        fontsize = 9 if name in highlight_set else 7
-        ax.annotate(
-            name,
-            (float(row["x"]), float(row["y"])),  # type: ignore[arg-type]
-            textcoords="offset points",
-            xytext=(5, 5),
-            fontsize=fontsize,
-            color=color,
-            alpha=0.9,
+        ax.add_collection(
+            LineCollection(
+                list(lines_xy),
+                colors=COLORS["constellation_lines"],
+                linewidths=0.8,
+                alpha=0.6,
+            )
         )
 
-    # Draw planets
-    for planet_key in [
-        "mercury",
-        "venus",
-        "mars",
-        "jupiter barycenter",
-        "saturn barycenter",
-    ]:
-        try:
-            planet = catalog.eph[planet_key]
-            astrometric = observer.at(t).observe(planet)
-            x, y = projection(astrometric)
-            name = planet_key.replace(" barycenter", "").capitalize()
+        ax.scatter(
+            stars_df["x"][bright_mask],
+            stars_df["y"][bright_mask],
+            s=marker_size,
+            color=COLORS["star"],
+            alpha=0.8,
+            zorder=2,
+        )
 
-            ax.scatter(x, y, s=80, color=COLORS["planet"], marker="o", zorder=4)
+        highlight_set = set(highlight_objects or [])
+        for hip_id, name in NAMED_STARS.items():
+            if hip_id not in stars_df.index:
+                continue
+            row = stars_df.loc[hip_id]
+            if float(row["magnitude"]) > 2.5:  # type: ignore[arg-type]
+                continue
+
+            color = COLORS["highlight"] if name in highlight_set else COLORS["text"]
+            fontsize = 9 if name in highlight_set else 7
             ax.annotate(
                 name,
-                (x, y),
+                (float(row["x"]), float(row["y"])),  # type: ignore[arg-type]
                 textcoords="offset points",
-                xytext=(8, 8),
-                fontsize=9,
-                color=COLORS["planet"],
+                xytext=(5, 5),
+                fontsize=fontsize,
+                color=color,
+                alpha=0.9,
+            )
+
+        for planet_key in [
+            "mercury",
+            "venus",
+            "mars",
+            "jupiter barycenter",
+            "saturn barycenter",
+        ]:
+            try:
+                planet = catalog.eph[planet_key]
+                astrometric = observer.at(t).observe(planet)
+                x, y = projection(astrometric)
+                name = planet_key.replace(" barycenter", "").capitalize()
+
+                ax.scatter(x, y, s=80, color=COLORS["planet"], marker="o", zorder=4)
+                ax.annotate(
+                    name,
+                    (x, y),
+                    textcoords="offset points",
+                    xytext=(8, 8),
+                    fontsize=9,
+                    color=COLORS["planet"],
+                    fontweight="bold",
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
+
+        try:
+            moon_astrometric = observer.at(t).observe(catalog.moon)
+            mx, my = projection(moon_astrometric)
+            ax.scatter(mx, my, s=200, color=COLORS["moon"], marker="o", zorder=4, alpha=0.9)
+            ax.annotate(
+                "Moon",
+                (mx, my),
+                textcoords="offset points",
+                xytext=(10, 10),
+                fontsize=10,
+                color=COLORS["moon"],
                 fontweight="bold",
             )
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
-    # Draw Moon
-    try:
-        moon_astrometric = observer.at(t).observe(catalog.moon)
-        mx, my = projection(moon_astrometric)
-        ax.scatter(mx, my, s=200, color=COLORS["moon"], marker="o", zorder=4, alpha=0.9)
-        ax.annotate(
-            "Moon",
-            (mx, my),
-            textcoords="offset points",
-            xytext=(10, 10),
-            fontsize=10,
-            color=COLORS["moon"],
-            fontweight="bold",
-        )
-    except Exception:  # pylint: disable=broad-exception-caught
-        pass
+        angle = np.deg2rad(fov / 2.0)
+        limit = np.sin(angle) / (1.0 - np.cos(angle))
+        ax.set_xlim(-limit, limit)
+        ax.set_ylim(-limit, limit)
+        ax.set_aspect("equal")
+        ax.axis("off")
 
-    # Limits and styling
-    angle = np.deg2rad(fov / 2.0)
-    limit = np.sin(angle) / (1.0 - np.cos(angle))
-    ax.set_xlim(-limit, limit)
-    ax.set_ylim(-limit, limit)
-    ax.set_aspect("equal")
-    ax.axis("off")
+        for label, x, y in [
+            ("N", 0, limit * 0.95),
+            ("S", 0, -limit * 0.95),
+            ("E", -limit * 0.95, 0),
+            ("W", limit * 0.95, 0),
+        ]:
+            ax.text(
+                x,
+                y,
+                label,
+                ha="center",
+                va="center",
+                fontsize=14,
+                color=COLORS["text"],
+                fontweight="bold",
+                alpha=0.7,
+            )
 
-    # Cardinal directions
-    for label, x, y in [
-        ("N", 0, limit * 0.95),
-        ("S", 0, -limit * 0.95),
-        ("E", -limit * 0.95, 0),
-        ("W", limit * 0.95, 0),
-    ]:
-        ax.text(
-            x,
-            y,
-            label,
-            ha="center",
-            va="center",
-            fontsize=14,
+        time_str = when.strftime("%Y-%m-%d %H:%M UTC")
+        ax.set_title(
+            f"StarLens — {time_str} · {lat:.1f}°, {lon:.1f}°",
             color=COLORS["text"],
-            fontweight="bold",
-            alpha=0.7,
+            fontsize=12,
+            pad=15,
         )
 
-    # Title
-    time_str = when.strftime("%Y-%m-%d %H:%M UTC")
-    ax.set_title(
-        f"StarLens — {time_str} · {lat:.1f}°, {lon:.1f}°",
-        color=COLORS["text"],
-        fontsize=12,
-        pad=15,
-    )
-
-    # Render to bytes
-    buf = io.BytesIO()
-    fig.savefig(
-        buf, format="png", dpi=120, bbox_inches="tight", facecolor=COLORS["background"]
-    )
-    plt.close(fig)
-    buf.seek(0)
-    return buf.read()
+        buf = io.BytesIO()
+        fig.savefig(
+            buf, format="png", dpi=120, bbox_inches="tight", facecolor=COLORS["background"]
+        )
+        buf.seek(0)
+        return buf.read()
+    finally:
+        plt.close(fig)

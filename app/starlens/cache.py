@@ -47,10 +47,10 @@ def _connect() -> None:
             _redis.ping()
             _available = True
             logger.info("Redis cache connected: %s", url)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             _redis = None
             _available = False
-            logger.info("Redis unavailable — caching disabled")
+            logger.warning("Redis unavailable — caching disabled (%s: %s)", type(exc).__name__, exc)
 
 
 def _cache_key(prefix: str, *parts: Any) -> str:
