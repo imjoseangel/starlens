@@ -28,8 +28,10 @@ class StarLensEngine:
         data_dir: str | Path | None = None,
         api_key: str | None = None,
         model: str | None = None,
+        *,
+        catalog: SkyCatalog | None = None,
     ):
-        self.catalog = SkyCatalog(data_dir=data_dir)
+        self.catalog = catalog if catalog is not None else SkyCatalog(data_dir=data_dir)
         self.gemma = GemmaClient(api_key=api_key or _cfg.api_key, model=model)
 
     def identify_photo(

@@ -14,9 +14,11 @@ import logging
 import os
 import tempfile
 import threading
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from starlens.catalog import SkyCatalog
 from starlens.engine import StarLensEngine
 from starlens.settings import settings
 
@@ -37,28 +39,51 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ─── Engine singleton ───────────────────────────────────────
-_engine: StarLensEngine | None = None
-_engine_key: str | None = None
-_engine_model: str | None = None
-_engine_lock = threading.Lock()
+# ─── Shared catalog + per-(key, model) engine LRU ─────────────
+# The Skyfield catalog (118k stars) is expensive to load and stateless w.r.t.
+# user credentials, so it's shared across all sessions. Engines are cached
+# per (api_key, model) pair so concurrent users with different keys never
+# hand each other's credentials to Gemini.
+_catalog: SkyCatalog | None = None
+_catalog_lock = threading.Lock()
+
+_ENGINE_CACHE_MAX = 8
+_engine_cache: "OrderedDict[tuple[str, str], StarLensEngine]" = OrderedDict()
+_engine_cache_lock = threading.Lock()
+
+
+def _get_catalog() -> SkyCatalog:
+    global _catalog  # pylint: disable=global-statement
+    if _catalog is None:
+        with _catalog_lock:
+            if _catalog is None:
+                logger.info("Loading shared sky catalog…")
+                _catalog = SkyCatalog(data_dir=Path(__file__).parent / "data")
+    return _catalog
 
 
 def get_engine(
     api_key: str | None = None, model: str | None = None
 ) -> StarLensEngine:
-    global _engine, _engine_key, _engine_model  # pylint: disable=global-statement
+    resolved_key = api_key or settings.gemini.api_key or ""
+    cache_key = (resolved_key, model or "")
 
-    key = api_key or settings.gemini.api_key
-    data_dir = Path(__file__).parent / "data"
-    if _engine is None or _engine_key != key or _engine_model != model:
-        with _engine_lock:
-            if _engine is None or _engine_key != key or _engine_model != model:
-                logger.info("Initializing engine: model=%s", model)
-                _engine = StarLensEngine(data_dir=data_dir, api_key=key, model=model)
-                _engine_key = key
-                _engine_model = model
-    return _engine
+    with _engine_cache_lock:
+        engine = _engine_cache.get(cache_key)
+        if engine is not None:
+            _engine_cache.move_to_end(cache_key)
+            return engine
+
+        logger.info("Initializing engine: model=%s", model)
+        engine = StarLensEngine(
+            api_key=resolved_key,
+            model=model,
+            catalog=_get_catalog(),
+        )
+        _engine_cache[cache_key] = engine
+        if len(_engine_cache) > _ENGINE_CACHE_MAX:
+            _engine_cache.popitem(last=False)
+        return engine
 
 
 _geocoder = Nominatim(user_agent="starlens")
@@ -678,9 +703,10 @@ with gr.Blocks(
         with gr.Column(scale=1):
             api_key_input = gr.Textbox(
                 label="🔑 Google AI Studio API Key",
-                value=settings.gemini.api_key,
+                value="",
                 type="password",
                 placeholder="Paste your key from aistudio.google.com/apikey",
+                info="Used only for this session — never logged or stored server-side.",
             )
         with gr.Column(scale=1):
             model_select = gr.Dropdown(
