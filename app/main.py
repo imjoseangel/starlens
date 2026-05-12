@@ -694,21 +694,21 @@ with gr.Blocks(
 
     # ── Settings row (always visible) ───────────────────
     with gr.Row():
-        with gr.Column(scale=2):
+        with gr.Column(scale=1, min_width=180):
             city_input = gr.Textbox(
                 label="📍 Location",
                 value=settings.app.default_city,
-                placeholder="City name, e.g. 'Tokyo, Japan'",
+                placeholder="e.g. Tokyo, Japan",
             )
-        with gr.Column(scale=1):
+        with gr.Column(scale=3, min_width=320):
             api_key_input = gr.Textbox(
                 label="🔑 Google AI Studio API Key",
                 value="",
                 type="password",
-                placeholder="Paste your key from aistudio.google.com/apikey",
-                info="Used only for this session — never logged or stored server-side.",
+                placeholder="AIza…  →  get a free key at aistudio.google.com/apikey",
+                info="Used only for this session · never logged or stored server-side.",
             )
-        with gr.Column(scale=1):
+        with gr.Column(scale=1, min_width=180):
             model_select = gr.Dropdown(
                 label="🧠 Gemma 4 Model",
                 choices=settings.gemini.available_models,
