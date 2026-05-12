@@ -65,13 +65,17 @@ _TOUR_STEP_LABELS = [
 _CHAT_HISTORY_MAX_TURNS = 12
 
 
+class MissingApiKeyError(ValueError):
+    """Raised when no Google AI Studio API key is configured."""
+
+
 class GemmaClient:
     """Gemma 4 client via Google AI Studio for astronomical intelligence."""
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
         key = api_key or _cfg.api_key
         if not key:
-            raise ValueError(
+            raise MissingApiKeyError(
                 "Google AI Studio API key is required. "
                 "Set STARLENS_GEMINI_API_KEY or paste it in the UI. "
                 "Get a free key at https://aistudio.google.com/apikey"
@@ -357,6 +361,10 @@ class GemmaClient:
         system = f"{_SYS_CHAT}\n\n## Current Sky Data\n\n{sky_context}"
 
         recent = (history or [])[-_CHAT_HISTORY_MAX_TURNS * 2:]
+        # Gemini rejects histories that don't start with role=user, so drop
+        # any leading model entries that may result from an uneven slice.
+        while recent and recent[0].get("role") != "user":
+            recent = recent[1:]
         contents: list = []
         for msg in recent:
             role = "user" if msg["role"] == "user" else "model"

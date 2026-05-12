@@ -7,7 +7,6 @@ Beautiful dark astronomy theme with the Gemma 4 brand front and center.
 from __future__ import annotations
 
 import base64
-import functools
 import io
 import json
 import logging
@@ -31,6 +30,7 @@ from geopy.geocoders import (
 )
 from google.genai import errors as genai_errors  # pylint: disable=wrong-import-position
 from PIL import Image  # pylint: disable=wrong-import-position
+from starlens.gemma import MissingApiKeyError  # pylint: disable=wrong-import-position
 
 logging.basicConfig(
     level=getattr(logging, settings.app.log_level.upper(), logging.INFO),
@@ -90,15 +90,30 @@ _geocoder = Nominatim(user_agent="starlens")
 _geocoder_lock = threading.Lock()
 
 
-@functools.lru_cache(maxsize=256)
+_GEOCODE_CACHE_MAX = 256
+_geocode_cache: "OrderedDict[str, tuple[float, float]]" = OrderedDict()
+_geocode_cache_lock = threading.Lock()
+
+
 def geocode(city: str) -> tuple[float, float]:
+    with _geocode_cache_lock:
+        hit = _geocode_cache.get(city)
+        if hit is not None:
+            _geocode_cache.move_to_end(city)
+            return hit
+
     try:
         logger.debug("Geocoding city: %s", city)
         with _geocoder_lock:
             loc = _geocoder.geocode(city)
         if loc:
-            logger.debug("Geocoded %s → (%.4f, %.4f)", city, loc.latitude, loc.longitude)
-            return round(loc.latitude, 4), round(loc.longitude, 4)
+            result = (round(loc.latitude, 4), round(loc.longitude, 4))
+            logger.debug("Geocoded %s → (%.4f, %.4f)", city, *result)
+            with _geocode_cache_lock:
+                _geocode_cache[city] = result
+                if len(_geocode_cache) > _GEOCODE_CACHE_MAX:
+                    _geocode_cache.popitem(last=False)
+            return result
     except Exception:  # pylint: disable=broad-exception-caught
         logger.warning("Geocoding failed for '%s', using fallback", city)
     return settings.app.fallback_lat, settings.app.fallback_lon
@@ -252,7 +267,7 @@ _GOOGLE_ERRORS = (
     httpx.TimeoutException,
     ConnectionError,
     TimeoutError,
-    ValueError,
+    MissingApiKeyError,
 )
 
 _ERR_TIMEOUT = (
@@ -288,7 +303,7 @@ _ERR_MODEL = (
 def _google_error_msg(exc: Exception) -> str:
     """Return a user-friendly message for Google AI / network errors."""
     logger.error("Google AI error: %s: %s", type(exc).__name__, exc)
-    if isinstance(exc, ValueError) and "api key" in str(exc).lower():
+    if isinstance(exc, MissingApiKeyError):
         return _ERR_UNAUTHORIZED
     if isinstance(exc, (httpx.ReadTimeout, httpx.ConnectTimeout, TimeoutError)):
         return _ERR_TIMEOUT
@@ -1065,6 +1080,8 @@ with gr.Blocks(
 
 
 if __name__ == "__main__":
+    # Pre-warm the Hipparcos catalog so the first request doesn't pay the load cost.
+    _get_catalog()
     app.launch(
         server_name=settings.app.host,
         server_port=settings.app.port,
